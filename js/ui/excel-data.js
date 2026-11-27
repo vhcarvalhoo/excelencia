@@ -28,6 +28,10 @@
         case 'filter-reapply': return this.filterReapply();
         case 'filter-cell': return this.filterByCell();
         case 'dedupe': return XL.Dialogs.removeDuplicates(this);
+        case 'texttocols': return XL.Dialogs.textToColumns(this);
+        case 'flashfill': return XL.Dialogs.flashFill(this);
+        case 'fill-down': return this.fillDownCopy();
+        case 'format-cells-dialog': return XL.Dialogs.formatCells(this);
         // exibir
         case 'freeze': return this.freezePanes(arg);
         case 'find': return XL.Find.open(this, 'find');
@@ -226,6 +230,7 @@
       else if (kind === 'col') items.push(m('Inserir', 'insert-cols', undefined, 'insertCells'), m('Excluir', 'delete-cols', undefined, 'deleteCells'));
       else items.push(m('Inserir...', 'insert-dialog', undefined, 'insertCells'), m('Excluir...', 'delete-dialog', undefined, 'deleteCells'));
       items.push(m('Limpar Conteúdo', 'clear', 'contents'));
+      items.push({ sep: true }, m('Formatar Células...', 'format-cells-dialog', undefined, 'formatCells'));
       if (kind === 'cell') {
         items.push({ sep: true },
           m('Filtrar pelo valor da célula', 'filter-cell'),
@@ -270,6 +275,25 @@
         buttons: [{ label: 'OK', primary: true, onClick: () => this.exec(kind + (choice === 'row' ? '-rows' : '-cols')) }, { label: 'Cancelar' }],
         onClose: () => this.grid.focus(),
       });
+    },
+
+    // Ctrl+D: copia a primeira linha da seleção para as de baixo (sem continuar séries).
+    fillDownCopy() {
+      const g = this.grid.range();
+      if (g.r1 === g.r2) { XL.ui.toast('Selecione a célula de cima e as de baixo que devem receber a cópia (ex.: B2:B10).'); return; }
+      const S = this.sheet;
+      this.pushUndo();
+      for (let c = g.c1; c <= g.c2; c++) {
+        const src = S.cell(g.r1, c);
+        for (let r = g.r1 + 1; r <= g.r2; r++) {
+          if (src && src.kind === 'formula') S.setInput(r, c, XL.Formula.shiftFormula(src.input, r - g.r1, 0));
+          else S.putCell(r, c, src);
+          S.replaceFmt(r, c, src ? src.fmt : {});
+        }
+      }
+      this.render();
+      this.emit('fill', { src: XL.rangeToStr({ r1: g.r1, c1: g.c1, r2: g.r1, c2: g.c2 }), dst: XL.rangeToStr(g), dir: 'down' });
+      this.emit('change', {});
     },
 
     // ================= Classificar =================

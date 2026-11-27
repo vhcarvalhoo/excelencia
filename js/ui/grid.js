@@ -89,8 +89,10 @@
       this.guideLayer = h('div.xl-layer.guides');
       this.breakLayer = h('div.xl-layer.breaks');
       this.filterLayer = h('div.xl-filterlayer');
+      this.chartLayer = h('div.xl-chartlayer');
+      this.dvLayer = h('div.xl-filterlayer.dv');
       this.editor = h('textarea.xl-editor.idle', { spellcheck: 'false', autocomplete: 'off', rows: '1', wrap: 'off', 'aria-label': 'Editor de célula' });
-      this.wrap.append(this.table, this.breakLayer, this.refLayer, this.selBox, this.copyBox, this.fillBox, this.handle, this.filterLayer, this.guideLayer, this.editor);
+      this.wrap.append(this.table, this.breakLayer, this.refLayer, this.selBox, this.copyBox, this.fillBox, this.handle, this.filterLayer, this.dvLayer, this.chartLayer, this.guideLayer, this.editor);
       this.scroller.appendChild(this.wrap);
       this.el.appendChild(this.scroller);
 
@@ -247,6 +249,32 @@
       this.drawGuides();
       this.drawFilterButtons();
       this.drawBreaks();
+      this.drawDv();
+    }
+
+    // Seta da lista suspensa e mensagem de entrada da validação de dados
+    drawDv() {
+      this.dvLayer.innerHTML = '';
+      if (this.editing) return;
+      const g = this.range();
+      if (g.r1 !== g.r2 || g.c1 !== g.c2) return;
+      const rule = this.sheet.validationAt(g.r1, g.c1);
+      if (!rule) return;
+      const td = this.tds[g.r1][g.c1];
+      if (rule.type === 'list') {
+        const b = h('button.xl-dvbtn', { type: 'button', title: 'Escolher da lista (Alt+↓)', html: '<svg viewBox="0 0 12 12" width="10" height="10"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>' });
+        b.style.left = td.offsetLeft + td.offsetWidth + 1 + 'px';
+        b.style.top = td.offsetTop + td.offsetHeight - 20 + 'px';
+        b.addEventListener('mousedown', (e) => { e.preventDefault(); e.stopPropagation(); });
+        b.addEventListener('click', (e) => { e.stopPropagation(); this.app.openDvList(g.r1, g.c1, b); });
+        this.dvLayer.appendChild(b);
+      }
+      if (rule.inputMsg || rule.inputTitle) {
+        const tip = h('div.xl-dvtip', rule.inputTitle ? h('b', rule.inputTitle) : null, rule.inputMsg ? h('div', rule.inputMsg) : null);
+        tip.style.left = td.offsetLeft + 8 + 'px';
+        tip.style.top = td.offsetTop + td.offsetHeight + 4 + 'px';
+        this.dvLayer.appendChild(tip);
+      }
     }
 
     // Editando uma fórmula enquanto olha outra planilha (para apontar células dela)?
@@ -420,6 +448,11 @@
       const sh = this.sheet;
       this.applyHidden();
       const keys = new Set();
+      // estilos de tabela e formatação condicional entram como "camadas" sobre o formato da célula
+      this.tblMap = sh.tableStyles();
+      this.cfMap = sh.conditionalStyles();
+      for (const k of this.tblMap.keys()) keys.add(k);
+      for (const k of this.cfMap.keys()) keys.add(k);
       const bottom = new Set(), right = new Set(), topS = new Set(), leftS = new Set();
       for (const [k, cell] of sh.cells) {
         keys.add(k);
@@ -448,6 +481,7 @@
       }
       this.applyFreeze();
       this.positionOverlays();
+      if (XL.Charts) XL.Charts.draw(this);
     }
 
     // Retorna true se a célula mostra um número (para checar ####).
@@ -463,11 +497,14 @@
       let align = f.align || d.align || 'left';
       if (this.showFormulas && cell && cell.kind === 'formula') align = 'left';
       cv.style.textAlign = align;
-      td.style.backgroundColor = f.fill || '';
-      cv.style.fontWeight = f.b ? 'bold' : '';
+      const ts = (this.tblMap && this.tblMap.get(k)) || {};
+      const cs = (this.cfMap && this.cfMap.get(k)) || {};
+      td.style.backgroundColor = cs.fill || f.fill || ts.fill || '';
+      td.style.backgroundImage = cs.bar ? `linear-gradient(90deg, ${cs.bar.color} 0%, ${cs.bar.color}99 ${cs.bar.pct}%, transparent ${cs.bar.pct}%)` : '';
+      cv.style.fontWeight = cs.b || f.b || (ts.b && f.b === undefined) ? 'bold' : '';
       cv.style.fontStyle = f.i ? 'italic' : '';
       cv.style.textDecoration = f.u ? 'underline' : '';
-      cv.style.color = f.color || (d.err ? '' : '');
+      cv.style.color = cs.color || f.color || ts.color || '';
       cv.style.fontFamily = f.font ? `"${f.font}", sans-serif` : '';
       cv.style.fontSize = f.size ? f.size + 'pt' : '';
       td.style.verticalAlign = { top: 'top', middle: 'middle' }[f.valign] || '';
@@ -529,6 +566,7 @@
 
     onMouseDown(e) {
       if (e.button !== 0) return;
+      if (this.app.selectedChart) this.app.selectChart(null);
       if (e.target.classList.contains('xl-resizer')) { this.startResize(e, +e.target.dataset.c); return; }
       const th = e.target.closest('th');
       if (th) {
@@ -739,7 +777,10 @@
       const { r, c, sheet } = this.editing;
       const text = this.activeInput().value;
       const res = this.app.commitInput(r, c, text, sheet);
-      if (!res.ok) { this.showError(res.msg); this.focusActiveInput(); return false; }
+      if (!res.ok) {
+        if (res.dv) { this.showDvError(res.dv, r, c); return false; }
+        this.showError(res.msg); this.focusActiveInput(); return false;
+      }
       const away = this.isAway();
       this.endEdit();
       if (away) this.app.showSheet(sheet); // volta para a planilha da fórmula
@@ -802,14 +843,47 @@
         start = this.lastPoint.start; end = this.lastPoint.end;
       } else { start = inp.selectionStart; end = inp.selectionEnd; }
       this.drag = { type: 'point', anchor: cell };
-      this.replacePoint(start, end, this.pointPrefix() + XL.toRef(cell.r, cell.c), cell);
+      this.replacePoint(start, end, this.pointRef({ r1: cell.r, c1: cell.c, r2: cell.r, c2: cell.c }), cell);
       this.app.setMode('Aponte');
     }
     updatePoint(cell) {
       const a = this.drag.anchor;
       const g = { r1: Math.min(a.r, cell.r), c1: Math.min(a.c, cell.c), r2: Math.max(a.r, cell.r), c2: Math.max(a.c, cell.c) };
-      this.replacePoint(this.lastPoint.start, this.lastPoint.end, this.pointPrefix() + XL.rangeToStr(g), cell);
+      this.replacePoint(this.lastPoint.start, this.lastPoint.end, this.pointRef(g), cell);
     }
+    // Texto da referência ao clicar/arrastar durante uma fórmula. Dentro de tabelas, usa [@Coluna] ou Tabela1[Coluna].
+    pointRef(g) {
+      const prefix = this.pointPrefix();
+      if (!prefix && this.editing) {
+        const S = this.sheet;
+        const t = S.tableAt(g.r1, g.c1);
+        if (t && g.c1 === g.c2 && t === S.tableAt(g.r2, g.c2)) {
+          const dr = S.tableDataRows(t);
+          const header = S.tableHeader(t, g.c1);
+          const ed = this.editing;
+          if (header) {
+            if (g.r1 === g.r2 && g.r1 === ed.r && g.r1 >= dr.r1 && g.r1 <= dr.r2 && XL.inRange(t.g, ed.r, ed.c)) return XL.srefText(header);
+            if (g.r1 === dr.r1 && g.r2 === dr.r2) return XL.srefText(header, t.name);
+          }
+        }
+      }
+      return prefix + XL.rangeToStr(g);
+    }
+
+    showDvError(rule, r, c) {
+      const msg = rule.errorMsg || 'Este valor não corresponde às restrições de validação de dados definidas para esta célula.';
+      this.hidePopups();
+      XL.ui.modal({
+        title: rule.errorTitle || 'Valor inválido', width: 430, className: 'dv-modal',
+        body: `<div class="dv-err"><span class="dv-x">✖</span><p>${XL.escapeHtml(msg)}</p></div>`,
+        buttons: [
+          { label: 'Repetir', primary: true, role: 'dv-retry', onClick: () => { setTimeout(() => { const inp = this.activeInput(); inp.focus(); inp.select(); }, 0); } },
+          { label: 'Cancelar', role: 'dv-cancel', onClick: () => { this.cancel(); } },
+        ],
+      });
+      this.app.emit('dverror', { ref: XL.toRef(r, c) });
+    }
+
     // Ao apontar células de outra planilha, a referência leva o nome dela: Janeiro!B6
     pointPrefix() { return this.isAway() ? XL.quoteSheet(this.sheet.name) + '!' : ''; }
     replacePoint(start, end, ref, cell) {
@@ -843,6 +917,10 @@
         if (lk === 'l' || lk === 'f') { e.preventDefault(); app.exec('find'); return; }
         if (lk === 'u' || lk === 'h') { e.preventDefault(); app.exec('replace'); return; }
         if (lk === 'p') { e.preventDefault(); app.exec('print-preview'); return; }
+        if (k === '1') { e.preventDefault(); app.exec('format-cells-dialog'); return; }
+        if (lk === 'e') { e.preventDefault(); app.exec('flashfill'); return; }
+        if (lk === 't') { e.preventDefault(); app.exec('table-create'); return; }
+        if (lk === 'd') { e.preventDefault(); app.exec('fill-down'); return; }
         if (k === '+' || k === '=') { e.preventDefault(); app.exec('insert-smart'); return; }
         if (k === '-') { e.preventDefault(); app.exec('delete-smart'); return; }
         if (k === 'PageDown' || k === 'PageUp') { e.preventDefault(); app.showSheetOffset(k === 'PageDown' ? 1 : -1); return; }
@@ -855,6 +933,10 @@
         return;
       }
       if (e.altKey && (k === '=' || k === '+')) { e.preventDefault(); app.exec('autosum', 'SOMA'); return; }
+      if (e.altKey && k === 'ArrowDown') {
+        const rule = this.sheet.validationAt(this.sel.ar, this.sel.ac);
+        if (rule && rule.type === 'list') { e.preventDefault(); app.openDvList(this.sel.ar, this.sel.ac, this.dvLayer.querySelector('.xl-dvbtn') || this.tds[this.sel.ar][this.sel.ac]); return; }
+      }
       const moves = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1], PageDown: [20, 0], PageUp: [-20, 0] };
       if (moves[k]) {
         e.preventDefault();
@@ -872,7 +954,7 @@
         }
         case 'Tab': e.preventDefault(); this.setSel(this.sel.ar, this.tabTarget(this.sel.ac, 0, e.shiftKey ? -1 : 1)); return;
         case 'F2': e.preventDefault(); this.beginEdit('edit'); return;
-        case 'Delete': e.preventDefault(); app.exec('clear', 'contents'); return;
+        case 'Delete': e.preventDefault(); if (app.selectedChart) app.exec('chart-delete'); else app.exec('clear', 'contents'); return;
         case 'Backspace': e.preventDefault(); this.beginEdit('enter', ''); return;
         case 'Escape': e.preventDefault(); app.clearCopy(); if (app.painterFmt) app.cancelPainter(); return;
         case 'Home': e.preventDefault(); this.setSel(this.sel.ar, 0); return;
@@ -947,7 +1029,7 @@
             const lp = this.lastPoint && this.lastPoint.text === inp.value && this.lastPoint.end === inp.selectionStart ? this.lastPoint : null;
             const start = lp ? lp.start : inp.selectionStart;
             const end = lp ? lp.end : inp.selectionStart;
-            this.replacePoint(start, end, this.pointPrefix() + XL.toRef(cell.r, cell.c), cell);
+            this.replacePoint(start, end, this.pointRef({ r1: cell.r, c1: cell.c, r2: cell.r, c2: cell.c }), cell);
             this.app.setMode('Aponte');
           }
           return;

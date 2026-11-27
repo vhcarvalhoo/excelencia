@@ -26,6 +26,11 @@
       this.page = defaultPage();
       this.showBreaks = false;
       this.sel = null;
+      this.tables = []; // { name, g, style, banded, totalRow, filterBtn }
+      this.cf = []; // regras de formatação condicional (a primeira tem prioridade)
+      this.dv = []; // regras de validação de dados
+      this.charts = []; // { id, type, g, x, y, w, h, title, legend, labels }
+      this.curCell = null; // célula cuja fórmula está sendo calculada (para [@Coluna])
       const self = this;
       const other = (s) => {
         if (!s) return self;
@@ -36,6 +41,7 @@
         cell: (r, c, s) => { const sh = other(s); return sh ? sh.value(r, c) : err(E.REF); },
         range: (r1, c1, r2, c2, s) => { const sh = other(s); return sh ? sh.rangeValues(r1, c1, r2, c2) : err(E.REF); },
         lastRow: (s) => { const sh = other(s); return sh ? sh.lastRow() : 0; },
+        sref: (node, asRange) => (self.srefValue ? self.srefValue(node, self.curCell, asRange) : err(E.REF)),
       };
     }
 
@@ -173,8 +179,11 @@
       if (cell.kind !== 'formula') return cell.value;
       if (this.computing.has(k)) { this.circular = true; return 0; }
       this.computing.add(k);
+      const prevCur = this.curCell;
+      this.curCell = { r, c };
       let v;
       try { v = XL.Formula.evaluate(cell.ast, this.ctx); } catch (e) { console.error(e); v = err(E.VALUE); }
+      this.curCell = prevCur;
       this.computing.delete(k);
       if (v instanceof Matrix) v = v.h && v.w ? v.rows[0][0] : err(E.CALC);
       if (v === null || v === undefined) v = 0;
@@ -197,6 +206,7 @@
       return {
         cells, colW: Object.assign({}, this.colW), filter: clone(this.filter), hidden: [...this.hiddenRows],
         freeze: clone(this.freeze), page: clone(this.page), showBreaks: this.showBreaks,
+        tables: clone(this.tables), cf: clone(this.cf), dv: clone(this.dv), charts: clone(this.charts),
       };
     }
     restore(s) {
@@ -214,11 +224,17 @@
       this.freeze = clone(s.freeze || null);
       this.page = Object.assign(defaultPage(), clone(s.page || {}));
       this.showBreaks = !!s.showBreaks;
+      this.tables = clone(s.tables || []);
+      this.cf = clone(s.cf || []);
+      this.dv = clone(s.dv || []);
+      this.charts = clone(s.charts || []);
       this.invalidate();
     }
     clear() {
       this.cells.clear(); this.colW = {}; this.filter = null; this.hiddenRows.clear(); this.freeze = null;
-      this.page = defaultPage(); this.showBreaks = false; this.sel = null; this.invalidate();
+      this.page = defaultPage(); this.showBreaks = false; this.sel = null;
+      this.tables = []; this.cf = []; this.dv = []; this.charts = [];
+      this.invalidate();
     }
 
     // ---------- Região de dados ----------
@@ -413,6 +429,18 @@
         }
       }
       this.page.printArea = fix(this.page.printArea);
+      // tabelas, regras, validações e gráficos acompanham as linhas/colunas
+      this.tables = this.tables.filter((t) => {
+        const h = t.g.r1 + 1;
+        if (op.kind === 'delete' && op.axis === 'row' && h >= op.at && h <= op.at + op.n - 1) return false;
+        const ng = fix(t.g);
+        if (!ng) return false;
+        t.g = ng;
+        return true;
+      });
+      for (const key of ['cf', 'dv', 'charts']) {
+        this[key] = this[key].filter((x) => { const ng = fix(x.g); if (!ng) return false; x.g = ng; return true; });
+      }
       if (op.axis === 'row' && this.page.titleRows) {
         const t = fix({ r1: this.page.titleRows.r1, r2: this.page.titleRows.r2, c1: 0, c2: 0 });
         this.page.titleRows = t ? { r1: t.r1, r2: t.r2 } : null;

@@ -349,6 +349,35 @@
     return i + 1;
   });
   def('VALOR', 'VALUE', TXT, 'texto', 'Converte um texto que representa um número em número.', (a) => N(T(a[0])));
+  def('TEXTO', 'TEXT', TXT, 'valor; formato_texto', 'Converte um número ou data em texto com o formato indicado, como "dd/mm/aaaa", "mmmm" ou "R$ #.##0,00".', (a) => {
+    const v = S(a[0]);
+    if (isErr(v)) throw v;
+    const code = T(a[1]);
+    if (typeof v === 'string') { const n = XL.parseInput(v); if (n.kind !== 'number') return v; return XL.formatCode(n.value, code); }
+    return XL.formatCode(N(v), code);
+  });
+  def('LOCALIZAR', 'SEARCH', TXT, 'texto_procurado; no_texto; [núm_inicial]', 'Retorna a posição de um texto dentro de outro (não diferencia maiúsculas e aceita curingas).', (a) => {
+    const find = T(a[0]), within = T(a[1]);
+    const st = has(a[2]) ? N(a[2]) : 1;
+    const re = wildcardRe(find);
+    const src = re.source.slice(1, -1); // sem ^ e $
+    const m = new RegExp(src, 'i').exec(within.slice(st - 1));
+    if (!m) throw err(E.VALUE);
+    return m.index + st;
+  });
+  const textPart = (before) => (a) => {
+    const s = T(a[0]), d = T(a[1]);
+    let n = has(a[2]) ? Math.trunc(N(a[2])) : 1;
+    if (!d || n === 0) throw err(E.VALUE);
+    let idx = -1;
+    if (n > 0) { for (let i = 0; i < n; i++) { idx = s.indexOf(d, idx + 1); if (idx < 0) break; } }
+    else { idx = s.length; for (let i = 0; i < -n; i++) { idx = s.lastIndexOf(d, idx - 1); if (idx < 0) break; } }
+    if (idx < 0) throw err(E.NA);
+    return before ? s.slice(0, idx) : s.slice(idx + d.length);
+  };
+  def('TEXTOANTES', 'TEXTBEFORE', TXT, 'texto; delimitador; [núm_instância]', 'Retorna o texto que vem antes do delimitador (ex.: o usuário antes do @ de um e-mail).', textPart(true));
+  def('TEXTODEPOIS', 'TEXTAFTER', TXT, 'texto; delimitador; [núm_instância]', 'Retorna o texto que vem depois do delimitador (ex.: o domínio depois do @).', textPart(false));
+  def('REPT', 'REPT', TXT, 'texto; núm_vezes', 'Repete um texto a quantidade de vezes indicada.', (a) => { const n = Math.trunc(N(a[1])); if (n < 0) throw err(E.VALUE); return T(a[0]).repeat(n); });
 
   // ================= Data e Hora =================
   const DT = 'Data e Hora';
@@ -376,6 +405,51 @@
     return wd + 1;
   });
   def('DIAS', 'DAYS', DT, 'data_final; data_inicial', 'Retorna o número de dias entre duas datas.', (a) => Math.trunc(N(a[0])) - Math.trunc(N(a[1])));
+  // dias úteis: segunda a sexta, sem os feriados informados
+  const holidays = (v) => new Set(has(v) ? nums([v]).map(Math.trunc) : []);
+  const isWorkday = (s, hol) => { const wd = XL.serialToParts(s).wd; return wd !== 0 && wd !== 6 && !hol.has(s); };
+  def('DIATRABALHO', 'WORKDAY', DT, 'data_inicial; dias; [feriados]', 'Retorna a data depois de um número de dias úteis (pula fins de semana e feriados).', (a) => {
+    let s = Math.trunc(N(a[0]));
+    let n = Math.trunc(N(a[1]));
+    const hol = holidays(a[2]);
+    const step = n >= 0 ? 1 : -1;
+    while (n !== 0) { s += step; if (isWorkday(s, hol)) n -= step; }
+    return s;
+  });
+  def('DIATRABALHOTOTAL', 'NETWORKDAYS', DT, 'data_inicial; data_final; [feriados]', 'Conta os dias úteis entre duas datas (incluindo as duas).', (a) => {
+    const s1 = Math.trunc(N(a[0])), s2 = Math.trunc(N(a[1]));
+    const hol = holidays(a[2]);
+    const lo = Math.min(s1, s2), hi = Math.max(s1, s2);
+    let c = 0;
+    for (let s = lo; s <= hi; s++) if (isWorkday(s, hol)) c++;
+    return s1 <= s2 ? c : -c;
+  });
+  const addMonths = (serial, months, endOfMonth) => {
+    const p = XL.serialToParts(serial);
+    const mIdx = p.m - 1 + months;
+    const last = new Date(Date.UTC(p.y, mIdx + 1, 0)).getUTCDate();
+    const day = endOfMonth ? last : Math.min(p.d, last);
+    return Math.round((Date.UTC(p.y, mIdx, day) - Date.UTC(1899, 11, 30)) / 86400000);
+  };
+  def('DATAM', 'EDATE', DT, 'data_inicial; meses', 'Retorna a data que fica alguns meses antes ou depois (ex.: vencimentos mensais).', (a) => addMonths(Math.trunc(N(a[0])), Math.trunc(N(a[1])), false));
+  def('FIMMÊS', 'EOMONTH', DT, 'data_inicial; meses', 'Retorna o último dia do mês, alguns meses antes ou depois.', (a) => addMonths(Math.trunc(N(a[0])), Math.trunc(N(a[1])), true));
+  def('DATADIF', 'DATEDIF', DT, 'data_inicial; data_final; unidade', 'Diferença entre datas em anos ("a"), meses ("m") ou dias ("d"). Também "md", "am", "ad".', (a) => {
+    const s1 = Math.trunc(N(a[0])), s2 = Math.trunc(N(a[1]));
+    const u = XL.normName(T(a[2])).replace('Y', 'A');
+    if (s1 > s2) throw err(E.NUM);
+    const p1 = XL.serialToParts(s1), p2 = XL.serialToParts(s2);
+    let months = (p2.y - p1.y) * 12 + (p2.m - p1.m);
+    if (p2.d < p1.d) months--;
+    switch (u) {
+      case 'D': return s2 - s1;
+      case 'M': return months;
+      case 'A': return Math.floor(months / 12);
+      case 'AM': case 'YM': return months % 12;
+      case 'MD': { const base = addMonths(s1, months, false); return s2 - base; }
+      case 'AD': case 'YD': { const yrs = Math.floor(months / 12); return s2 - addMonths(s1, yrs * 12, false); }
+    }
+    throw err(E.NUM);
+  });
 
   // ================= Pesquisa e Referência =================
   const PR = 'Pesquisa e Referência';

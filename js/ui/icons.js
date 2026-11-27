@@ -103,6 +103,8 @@
     printTitles: lg(`<rect x="5" y="4" width="15" height="18" rx="1" fill="#fff"/><rect x="12" y="10" width="15" height="18" rx="1" fill="#fff"/><rect x="5" y="4" width="15" height="4" fill="${BL}" stroke="${BL}"/><rect x="12" y="10" width="15" height="4" fill="${BL}" stroke="${BL}"/>`),
     preview: lg(`<rect x="6" y="4" width="16" height="22" rx="1.5" fill="#fff"/><path d="M9.5 9h9M9.5 13h9M9.5 17h5" stroke="#9a9a9a"/><circle cx="21" cy="21" r="5" fill="#fff" stroke="${G}" stroke-width="2"/><path d="m24.5 24.5 3.5 3.5" stroke="${G}" stroke-width="2.4"/>`),
     refreshSm: sm(`<path d="M19 9a7.5 7.5 0 1 0 .8 5" stroke="${G}" stroke-width="1.8"/><path d="M20 4v5h-5" stroke="${G}" stroke-width="1.8"/>`),
+    flashFill: sm(`<path d="M13 2.5 5.5 13.5H11l-1.5 8L18.5 10H13z" fill="#f5b301" stroke="#b37f00"/>`),
+    flashFillBig: lg(`<rect x="3" y="6" width="10" height="20" rx="1"/><path d="M3 12.5h10M3 19h10"/><path d="M22 4 15 17h5l-1.5 11L27 14h-5z" fill="#f5b301" stroke="#b37f00"/>`),
     // Exibir
     freeze: lg(`<rect x="4" y="5" width="24" height="22" rx="1.5"/><path d="M4 11h24M11 5v22" stroke="${BL}" stroke-width="2"/>`),
     zoom: lg(`<circle cx="14" cy="14" r="8"/><path d="M20 20l7 7M10.5 14h7M14 10.5v7" stroke-width="2"/>`),

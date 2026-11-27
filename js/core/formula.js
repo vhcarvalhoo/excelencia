@@ -34,6 +34,7 @@
   const RE_IDENT = /^[A-Za-zÀ-ÿ_][A-Za-zÀ-ÿ0-9_.]*/;
   const RE_ERR = /^#(?:DIV\/0!|VALOR!|REF!|NOME\?|N\/D|NÚM!|NULO!|CALC!)/i;
   const RE_SHEET = /^(?:'((?:[^']|'')+)'|([A-Za-zÀ-ÿ_][A-Za-zÀ-ÿ0-9_.]*))!/;
+  const RE_SREF = /^([A-Za-zÀ-ÿ_][A-Za-zÀ-ÿ0-9_.]*)?\[(?:(@)(?:\[([^[\]]+)\]|([^[\]]+))|([^[\]@#][^[\]]*))\]/;
   const OPS2 = ['<>', '<=', '>='];
   const OPS1 = '+-*/^&=<>%():';
 
@@ -79,6 +80,12 @@
       }
       if (ch === '#' && (m = RE_ERR.exec(rest))) {
         toks.push({ type: 'err', text: m[0], value: m[0].toUpperCase(), pos });
+        i += m[0].length;
+        continue;
+      }
+      // referência estruturada de tabela: [@Qtd]  [@[Preço unit.]]  Tabela1[Total]
+      if ((ch === '[' || /[A-Za-zÀ-ÿ_]/.test(ch)) && (m = RE_SREF.exec(rest))) {
+        toks.push({ type: 'sref', text: m[0], table: m[1] || null, thisRow: !!m[2], col: (m[3] || m[4] || m[5]).trim(), pos });
         i += m[0].length;
         continue;
       }
@@ -202,6 +209,7 @@
           return { t: 'colrange', c1: Math.min(c1, c2), c2: Math.max(c1, c2), sheet: t.sheet };
         }
         case 'name': return { t: 'name', name: t.text };
+        case 'sref': return { t: 'sref', table: t.table, col: t.col, thisRow: t.thisRow };
         case 'func': {
           const fname = t.text.toUpperCase();
           if (!isOp('(')) throw new FormulaSyntaxError(`Faltou abrir o parêntese da função ${fname}.`);
@@ -370,6 +378,7 @@
       case 'range': return ctx.range(node.r1, node.c1, node.r2, node.c2, node.sheet);
       case 'colrange': return ctx.range(0, node.c1, ctx.lastRow(node.sheet), node.c2, node.sheet);
       case 'name': return err(E.NAME);
+      case 'sref': return ctx.sref ? ctx.sref(node, false) : err(E.REF);
       case 'neg': return lift1(evaluate(node.e, ctx), (v) => { const n = toNum(v); return isErr(n) ? n : -n; });
       case 'pct': return lift1(evaluate(node.e, ctx), (v) => { const n = toNum(v); return isErr(n) ? n : n / 100; });
       case 'bin': return lift2(evaluate(node.l, ctx), evaluate(node.r, ctx), (x, y) => binScalar(node.op, x, y));
@@ -377,7 +386,8 @@
         const def = XL.Functions.get(node.name);
         if (!def) return err(E.NAME);
         if (node.args.length < def.min || node.args.length > def.max) return err(E.VALUE);
-        const args = node.args.map((a) => (a.t === 'ref' ? ctx.range(a.r, a.c, a.r, a.c, a.sheet) : evaluate(a, ctx)));
+        const args = node.args.map((a) => (a.t === 'ref' ? ctx.range(a.r, a.c, a.r, a.c, a.sheet)
+          : a.t === 'sref' && a.thisRow && ctx.sref ? ctx.sref(a, true) : evaluate(a, ctx)));
         try {
           const v = def.fn(args, ctx);
           return v === undefined ? err(E.VALUE) : v;
