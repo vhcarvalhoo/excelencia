@@ -241,10 +241,112 @@
         const mm = Math.floor(secs / 60);
         return pad2(hh) + ':' + pad2(mm) + ':' + pad2(secs - mm * 60);
       }
+      case 'custom':
+        return XL.formatCode(n, f.code || 'Geral');
       default:
         if (dec !== undefined && dec !== null) return XL.nf(dec, dec, false).format(n);
         return XL.fmtGeneral(n);
     }
+  };
+
+  // ---------- Códigos de formato personalizados (como em Formatar Células › Personalizado e na função TEXTO) ----------
+  // Números: 0 # , (decimal) . (milhar) %  · Datas: d dd ddd dddd m mm mmm mmmm aa aaaa (ou yy yyyy) h hh mm ss
+  // Texto fixo: "entre aspas" ou \x · Seções: positivo;negativo;zero
+  const MON3 = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+  const WD3 = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+  function splitSections(code) {
+    const out = [];
+    let cur = '', q = false;
+    for (let i = 0; i < code.length; i++) {
+      const ch = code[i];
+      if (ch === '"') q = !q;
+      if (ch === ';' && !q) { out.push(cur); cur = ''; continue; }
+      if (ch === '\\' && !q && i + 1 < code.length) { cur += ch + code[++i]; continue; }
+      cur += ch;
+    }
+    out.push(cur);
+    return out;
+  }
+  function tokenizeCode(sec) {
+    const toks = [];
+    for (let i = 0; i < sec.length; i++) {
+      const ch = sec[i];
+      if (ch === '"') { let j = i + 1, s = ''; while (j < sec.length && sec[j] !== '"') s += sec[j++]; toks.push({ t: 'lit', s }); i = j; continue; }
+      if (ch === '\\') { toks.push({ t: 'lit', s: sec[i + 1] || '' }); i++; continue; }
+      if (ch === '[') { while (i < sec.length && sec[i] !== ']') i++; continue; }
+      if (ch === '_') { toks.push({ t: 'lit', s: ' ' }); i++; continue; }
+      if (ch === '*') { i++; continue; }
+      if (/[dmayhs]/i.test(ch)) {
+        let j = i;
+        while (j < sec.length && sec[j].toLowerCase() === ch.toLowerCase()) j++;
+        toks.push({ t: 'date', s: sec.slice(i, j).toLowerCase() });
+        i = j - 1;
+        continue;
+      }
+      if ('0#?.,'.includes(ch)) { toks.push({ t: 'num', s: ch }); continue; }
+      if (ch === '%') { toks.push({ t: 'pct' }); continue; }
+      if (ch === '@') { toks.push({ t: 'at' }); continue; }
+      toks.push({ t: 'lit', s: ch });
+    }
+    return toks;
+  }
+  XL.isDateCode = (code) => tokenizeCode(splitSections(String(code))[0]).some((t) => t.t === 'date');
+  function formatDateCode(v, toks) {
+    if (v < 0 || v > 2958465) return '########';
+    const p = XL.serialToParts(v);
+    let secs = Math.round((v - Math.floor(v)) * 86400);
+    const hh = Math.floor(secs / 3600); secs -= hh * 3600;
+    const mi = Math.floor(secs / 60); secs -= mi * 60;
+    const dates = toks.map((t, i) => (t.t === 'date' ? i : -1)).filter((i) => i >= 0);
+    return toks.map((t, i) => {
+      if (t.t !== 'date') return t.t === 'lit' ? t.s : t.t === 'pct' ? '%' : '';
+      const s = t.s, c = s[0], n = s.length;
+      if (c === 'd') return n === 1 ? String(p.d) : n === 2 ? pad2(p.d) : n === 3 ? WD3[p.wd] : XL.WEEKDAYS[p.wd];
+      if (c === 'a' || c === 'y') return n <= 2 ? pad2(p.y % 100) : String(p.y);
+      if (c === 'h') return n === 1 ? String(hh) : pad2(hh);
+      if (c === 's') return n === 1 ? String(secs) : pad2(secs);
+      // "m" é minuto quando vem depois de hora ou antes de segundo
+      const k = dates.indexOf(i);
+      const prev = k > 0 ? toks[dates[k - 1]].s[0] : '';
+      const next = k < dates.length - 1 ? toks[dates[k + 1]].s[0] : '';
+      if (n <= 2 && (prev === 'h' || next === 's')) return n === 1 ? String(mi) : pad2(mi);
+      return n === 1 ? String(p.m) : n === 2 ? pad2(p.m) : n === 3 ? MON3[p.m - 1] : n === 4 ? XL.MONTHS[p.m - 1] : XL.MONTHS[p.m - 1][0];
+    }).join('');
+  }
+  function formatNumCode(v, toks, neg) {
+    const idx = toks.map((t, i) => (t.t === 'num' ? i : -1)).filter((i) => i >= 0);
+    const pct = toks.some((t) => t.t === 'pct');
+    const lit = (t) => (t.t === 'lit' ? t.s : t.t === 'pct' ? '%' : '');
+    if (!idx.length) return toks.map(lit).join('');
+    const first = idx[0], last = idx[idx.length - 1];
+    const spec = toks.slice(first, last + 1).filter((t) => t.t === 'num').map((t) => t.s).join('');
+    const ci = spec.indexOf(',');
+    const intSpec = ci >= 0 ? spec.slice(0, ci) : spec;
+    const decSpec = ci >= 0 ? spec.slice(ci + 1).replace(/[.,]/g, '') : '';
+    const grouping = intSpec.includes('.');
+    const minInt = (intSpec.match(/0/g) || []).length;
+    const maxDec = decSpec.length;
+    const minDec = (decSpec.match(/0/g) || []).length;
+    const x = Math.abs(v) * (pct ? 100 : 1);
+    let [ip, dp = ''] = x.toFixed(maxDec).split('.');
+    while (dp.length > minDec && dp.endsWith('0')) dp = dp.slice(0, -1);
+    if (ip === '0' && minInt === 0) ip = '';
+    ip = ip.padStart(minInt, '0');
+    if (grouping) ip = ip.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    const num = (neg && (ip || dp) && Number(ip + dp) !== 0 ? '-' : '') + ip + (dp ? ',' + dp : '');
+    return toks.slice(0, first).map(lit).join('') + num + toks.slice(last + 1).map(lit).join('');
+  }
+  XL.formatCode = (n, code) => {
+    code = String(code);
+    if (/^(geral|general)$/i.test(code.trim())) return XL.fmtGeneral(n);
+    const secs = splitSections(code);
+    let sec = secs[0];
+    let v = n, neg = n < 0;
+    if (n < 0 && secs[1] !== undefined) { sec = secs[1]; v = -n; neg = false; }
+    else if (n === 0 && secs[2] !== undefined) sec = secs[2];
+    const toks = tokenizeCode(sec);
+    if (toks.some((t) => t.t === 'date')) return formatDateCode(v, toks);
+    return formatNumCode(v, toks, neg);
   };
 
   XL.formatValue = (v, fmt) => {
@@ -263,7 +365,7 @@
     const v = cell.value;
     const nf = cell.fmt && cell.fmt.numFmt;
     if (nf === 'porcentagem') return XL.nf(0, 10, false).format(Number((v * 100).toPrecision(12))) + '%';
-    if (nf === 'data' || nf === 'datalonga') return XL.formatNumber(v, { numFmt: 'data' });
+    if (nf === 'data' || nf === 'datalonga' || (nf === 'custom' && XL.isDateCode(cell.fmt.code || ''))) return XL.formatNumber(v, { numFmt: 'data' });
     return XL.nf(0, 10, false).format(v);
   };
 })();

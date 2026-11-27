@@ -9,26 +9,21 @@
   const SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 36, 48, 72];
   const NUMFMTS = [
     ['geral', 'Geral'], ['numero', 'Número'], ['moeda', 'Moeda'], ['contabil', 'Contábil'],
-    ['data', 'Data Abreviada'], ['datalonga', 'Data Completa'], ['hora', 'Hora'], ['porcentagem', 'Porcentagem'], ['texto', 'Texto'],
+    ['data', 'Data Abreviada'], ['datalonga', 'Data Completa'], ['hora', 'Hora'], ['porcentagem', 'Porcentagem'], ['texto', 'Texto'], ['custom', 'Personalizado...'],
   ];
 
   // Recursos que ainda serão ensinados — mostram onde aparecem na trilha.
   const SOON = {
-    condfmt: 'Formatação Condicional é ensinada no <b>Nível Intermediário</b> (Tabelas e visualização).',
-    fmtTable: 'Formatar como Tabela chega no <b>Nível Intermediário</b> (Tabelas e visualização).',
     merge: 'Mesclar células: <b>Nível Intermediário</b> (dica: prefira "Centralizar na Seleção").',
     orient: 'Orientação do texto: <b>Nível Intermediário</b>.',
     indent: 'Recuo: <b>Nível Intermediário</b>.',
-    filldown: 'Preencher (série, Preenchimento Relâmpago): <b>Nível Intermediário</b>.',
     pivot: 'Tabelas Dinâmicas: <b>Nível Avançado</b>.',
-    charts: 'Gráficos: <b>Nível Intermediário</b> (Tabelas e visualização).',
+    scatter: 'Gráfico de Dispersão: <b>Nível Avançado</b> (Análise de dados).',
     sparkline: 'Minigráficos: <b>Nível Avançado</b> (Dashboards).',
     slicer: 'Segmentação de Dados e Linha do Tempo: <b>Nível Avançado</b>.',
     pictures: 'Imagens e ilustrações não fazem parte das lições atuais.',
     powerquery: 'Power Query (Obter e Transformar Dados): <b>Nível Expert</b> — a ferramenta mais poderosa para importar e tratar dados!',
     refresh: 'Atualizar consultas: <b>Nível Expert</b> (Power Query).',
-    texttocols: 'Texto para Colunas: <b>Nível Intermediário</b> (Texto e datas).',
-    validation: 'Validação de Dados (listas suspensas): <b>Nível Intermediário</b>.',
     whatif: 'Teste de Hipóteses (Atingir Meta, Cenários): <b>Nível Avançado</b>.',
     forecast: 'Planilha de Previsão: <b>Nível Avançado</b>.',
     names: 'Nomes definidos: <b>Nível Intermediário</b>.',
@@ -48,16 +43,50 @@
       this.tabsEl = h('div.xl-tabs', { role: 'tablist' });
       this.bodyEl = h('div.xl-ribbon');
       this.tabs = this.defineTabs();
+      this.renderTabBar();
+      this.setTab('home', true);
+    }
+
+    // Guias contextuais (Design da Tabela, Design do Gráfico) só aparecem quando fazem sentido.
+    visible(t) { return !t.contextual || !!t.contextual(); }
+    renderTabBar() {
+      this.tabsEl.innerHTML = '';
       for (const t of this.tabs) {
-        const b = h('button.xl-tab', {
+        if (!this.visible(t)) continue;
+        const b = h('button.xl-tab' + (t.contextual ? '.ctx' : ''), {
           type: 'button', role: 'tab', dataset: { tab: t.id },
           onmousedown: (e) => e.preventDefault(),
           onclick: () => this.setTab(t.id),
         }, t.label);
         if (t.id === 'file') b.classList.add('file');
+        b.classList.toggle('active', t.id === this.active);
         this.tabsEl.appendChild(b);
       }
-      this.setTab('home', true);
+    }
+    reveal(b) {
+      const T = this.tabsEl;
+      if (!b || !T.isConnected) return;
+      const tr = T.getBoundingClientRect(), br = b.getBoundingClientRect();
+      if (br.right > tr.right) T.scrollLeft += br.right - tr.right + 12;
+      else if (br.left < tr.left) T.scrollLeft -= tr.left - br.left + 12;
+    }
+    updateContext() {
+      const app = this.app;
+      if (!app.grid) return;
+      const vis = this.tabs.filter((t) => t.contextual && this.visible(t)).map((t) => t.id).join(',');
+      if (vis !== this.ctxVis) {
+        this.ctxVis = vis;
+        this.renderTabBar();
+        // em janelas estreitas a guia contextual nasce fora da tela: rola a barra até ela
+        const ctx = this.tabsEl.querySelectorAll('.xl-tab.ctx');
+        if (ctx.length) this.reveal(ctx[ctx.length - 1]);
+      }
+      const cur = this.tabs.find((t) => t.id === this.active);
+      const t = app.activeTable ? app.activeTable() : null;
+      const key = (t ? t.name : '') + '|' + (app.selectedChart || '');
+      if (cur && cur.contextual && !this.visible(cur)) this.setTab('home', true);
+      else if (cur && cur.contextual && key !== this.ctxKey) this.setTab(this.active, true);
+      this.ctxKey = key;
     }
 
     setTab(id, silent) {
@@ -66,8 +95,12 @@
         this.app.exec('print-preview');
         return;
       }
+      const want = this.tabs.find((t) => t.id === id);
+      if (!want || !this.visible(want)) id = 'home';
       this.active = id;
+      if (want && want.contextual && !this.tabsEl.querySelector(`[data-tab="${id}"]`)) this.renderTabBar();
       this.tabsEl.querySelectorAll('.xl-tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === id));
+      this.reveal(this.tabsEl.querySelector('.xl-tab.active'));
       const tab = this.tabs.find((t) => t.id === id);
       this.bodyEl.innerHTML = '';
       if (tab.groups) tab.groups.forEach((g) => this.bodyEl.appendChild(this.renderGroup(g)));
@@ -92,6 +125,7 @@
         case 'sep': return h('span.rb-sep');
         case 'select': return this.renderSelect(it);
         case 'check': return this.renderCheck(it);
+        case 'input': return this.renderInput(it);
         default: return this.renderButton(it);
       }
     }
@@ -128,7 +162,7 @@
           }, { noneLabel: it.cmd === 'fill' ? 'Sem Preenchimento' : 'Automático' });
           return;
         }
-        const items = (typeof it.menu === 'function' ? it.menu() : it.menu).map((m) => m.sep ? m : ({
+        const items = (typeof it.menu === 'function' ? it.menu() : it.menu).map((m) => m.sep || m.header ? m : ({
           label: m.label, icon: m.icon ? I[m.icon] : m.glyph ? `<span class="rb-glyph sm">${m.glyph}</span>` : '', hint: m.hint, swatch: m.swatch,
           data: { cmd: m.cmd, arg: m.arg !== undefined ? String(m.arg) : '' },
           onClick: () => {
@@ -171,6 +205,19 @@
       });
       this['sel_' + it.cmd] = sel;
       return it.label ? h('label.rb-sellbl', h('span', it.label), sel) : sel;
+    }
+
+    renderInput(it) {
+      const inp = h('input.rb-input', { type: 'text', title: it.title || '', dataset: { cmd: it.cmd }, style: { width: it.width + 'px' } });
+      inp.value = it.get() || '';
+      const commit = () => { if (inp.isConnected && inp.value !== (it.get() || '')) this.app.exec(it.cmd, inp.value); };
+      inp.addEventListener('keydown', (e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') { e.preventDefault(); commit(); this.app.grid.focus(); }
+        else if (e.key === 'Escape') { inp.value = it.get() || ''; this.app.grid.focus(); }
+      });
+      inp.addEventListener('change', commit);
+      return it.label ? h('label.rb-sellbl.rb-inlbl', h('span', it.label), inp) : inp;
     }
 
     renderCheck(it) {
@@ -231,7 +278,7 @@
       on('show-formulas', undefined, app.grid.showFormulas);
       if (this.sel_font && this.bodyEl.contains(this.sel_font)) this.sel_font.value = f.font || 'Aptos Narrow';
       if (this.sel_size && this.bodyEl.contains(this.sel_size)) this.sel_size.value = String(f.size || 11);
-      if (this.sel_numfmt && this.bodyEl.contains(this.sel_numfmt)) this.sel_numfmt.value = f.numFmt || 'geral';
+      if (this.sel_numfmt && this.bodyEl.contains(this.sel_numfmt)) this.sel_numfmt.value = f.numFmt === 'custom' ? 'custom' : f.numFmt || 'geral';
       on('filter-toggle', undefined, !!app.sheet.filter);
       const p = app.sheet.page;
       const fw = this['sel_page-fitw'], fh = this['sel_page-fith'];
@@ -277,6 +324,44 @@
         { sep: true },
         { label: 'Normal (remover estilo)', cmd: 'cellstyle', arg: 'normal' },
       ];
+
+      const TS = XL.TABLE_STYLES;
+      const tblGlyph = (k) => `<span class="tbl-sw"><i style="background:${TS[k].head}"></i><i style="background:${TS[k].band}"></i><i></i><i style="background:${TS[k].band}"></i></span>`;
+      const tableMenu = [{ header: 'Estilos de Tabela' }].concat(Object.keys(TS).map((k) => ({
+        label: 'Estilo ' + TS[k].label, cmd: 'table-create', arg: k, swatch: `background:linear-gradient(${TS[k].head} 0 34%, ${TS[k].band} 34% 67%, #fff 67%)`,
+      })));
+      const grad = (cols) => `background:linear-gradient(90deg, ${cols.join(', ')})`;
+      const cfMenu = [
+        { header: 'Realçar Regras das Células' },
+        { label: 'É Maior do que...', cmd: 'cf', arg: 'gt' },
+        { label: 'É Menor do que...', cmd: 'cf', arg: 'lt' },
+        { label: 'Está Entre...', cmd: 'cf', arg: 'between' },
+        { label: 'É Igual a...', cmd: 'cf', arg: 'eq' },
+        { label: 'Texto que Contém...', cmd: 'cf', arg: 'text' },
+        { label: 'Valores Duplicados...', cmd: 'cf', arg: 'dup' },
+        { header: 'Regras de Primeiros/Últimos' },
+        { label: 'Primeiros Itens...', cmd: 'cf', arg: 'top' },
+        { label: 'Últimos Itens...', cmd: 'cf', arg: 'bottom' },
+        { label: 'Acima da Média...', cmd: 'cf', arg: 'above' },
+        { label: 'Abaixo da Média...', cmd: 'cf', arg: 'below' },
+        { header: 'Barras de Dados' },
+        ...Object.keys(XL.CF_BARS).map((k) => ({ label: 'Barra ' + k[0].toUpperCase() + k.slice(1), cmd: 'cf', arg: 'bar-' + k, swatch: grad([XL.CF_BARS[k], XL.CF_BARS[k] + '33']) })),
+        { header: 'Escalas de Cor' },
+        ...Object.keys(XL.CF_SCALES).map((k) => ({ label: XL.CF_SCALES[k].label, cmd: 'cf', arg: 'scale-' + k, swatch: grad(XL.CF_SCALES[k].colors) })),
+        { sep: true },
+        { label: 'Nova Regra (usar uma fórmula)...', cmd: 'cf', arg: 'formula' },
+        { sep: true },
+        { label: 'Limpar Regras das Células Selecionadas', cmd: 'cf-clear', arg: 'sel' },
+        { label: 'Limpar Regras da Planilha Inteira', cmd: 'cf-clear', arg: 'all' },
+      ];
+      const chartTypes = [
+        { label: 'Colunas Agrupadas', arg: 'col', icon: 'chartCol' },
+        { label: 'Barras Agrupadas', arg: 'bar', icon: 'chartBar' },
+        { label: 'Linhas', arg: 'line', icon: 'chartLine' },
+        { label: 'Pizza', arg: 'pie', icon: 'chartPie' },
+      ];
+      const tbl = () => (app.grid && app.activeTable ? app.activeTable() : null);
+      const chart = () => (app.grid && app.activeChart ? app.activeChart() : null);
 
       return [
         { id: 'file', label: 'Arquivo' },
@@ -339,11 +424,12 @@
                 { t: 'sep' },
                 { cmd: 'dec-inc', glyph: '<span class="dec">←0<br>,00</span>', title: 'Aumentar Casas Decimais' },
                 { cmd: 'dec-dec', glyph: '<span class="dec">,00<br>→0</span>', title: 'Diminuir Casas Decimais' },
+                { cmd: 'format-cells-dialog', glyph: '<span style="font-size:12px">⋯</span>', title: 'Mais formatos: Formatar Células (Ctrl+1)' },
               ] },
             ] }] },
             { label: 'Estilos', items: [{ t: 'col', items: [
-              soon('condfmt', 'condFormat', 'Formatação Condicional', 'btn', { menuOnly: false }),
-              soon('fmtTable', 'table', 'Formatar como Tabela'),
+              { cmd: 'cf', icon: 'condFormat', label: 'Formatação Condicional', menuOnly: true, menuId: 'cf', menu: cfMenu },
+              { cmd: 'table-create', icon: 'table', label: 'Formatar como Tabela', menuOnly: true, menuId: 'fmt-table', menu: tableMenu },
               { cmd: 'cellstyle', icon: 'cellStyles', label: 'Estilos de Célula', menuOnly: true, menuId: 'cellstyle', menu: cellStyles },
             ] }] },
             { label: 'Células', items: [{ t: 'col', items: [
@@ -366,12 +452,17 @@
                 { label: 'Largura da Coluna...', cmd: 'colwidth' },
                 { sep: true },
                 { label: 'Renomear Planilha', cmd: 'sheet-rename' },
+                { sep: true },
+                { label: 'Formatar Células...', cmd: 'format-cells-dialog', hint: 'Ctrl+1' },
               ] },
             ] }] },
             { label: 'Edição', items: [
               { t: 'col', items: [
                 { cmd: 'autosum', arg: 'SOMA', glyph: '<span style="font-size:17px">Σ</span>', label: 'AutoSoma', title: 'AutoSoma (Alt+=)', menuId: 'autosum', menu: autosumMenu },
-                soon('filldown', 'fillDown', 'Preencher'),
+                { cmd: 'fill-menu', icon: 'fillDown', label: 'Preencher', menuOnly: true, menuId: 'fill-menu', menu: [
+                  { label: 'Para Baixo', cmd: 'fill-down', hint: 'Ctrl+D' },
+                  { label: 'Preenchimento Relâmpago', cmd: 'flashfill', icon: 'flashFill', hint: 'Ctrl+E' },
+                ] },
                 { cmd: 'clear', icon: 'clear', label: 'Limpar', menuOnly: true, menuId: 'clear', menu: [
                   { label: 'Limpar Tudo', cmd: 'clear', arg: 'all' },
                   { label: 'Limpar Formatos', cmd: 'clear', arg: 'formats' },
@@ -397,14 +488,14 @@
         },
         {
           id: 'insert', label: 'Inserir', groups: [
-            { label: 'Tabelas', items: [soon('pivot', 'pivot', 'Tabela\nDinâmica', 'big'), soon('fmtTable', 'tableBig', 'Tabela', 'big')] },
+            { label: 'Tabelas', items: [soon('pivot', 'pivot', 'Tabela\nDinâmica', 'big'), { t: 'big', cmd: 'table-create', icon: 'tableBig', label: 'Tabela', title: 'Tabela (Ctrl+T)' }] },
             { label: 'Ilustrações', items: [soon('pictures', 'pictures', 'Imagens', 'big')] },
             { label: 'Gráficos', items: [
-              soon('charts', 'chartRec', 'Gráficos\nRecomendados', 'big'),
+              { t: 'big', cmd: 'chart-insert', arg: 'rec', icon: 'chartRec', label: 'Gráficos\nRecomendados', title: 'Gráficos Recomendados: o simulador escolhe o tipo pelos seus dados' },
               { t: 'col', items: [
-                { t: 'row', items: [soon('charts', 'chartCol', null, 'btn', { title: 'Coluna' }), soon('charts', 'chartBar', null, 'btn', { title: 'Barra' })] },
-                { t: 'row', items: [soon('charts', 'chartLine', null, 'btn', { title: 'Linha' }), soon('charts', 'chartPie', null, 'btn', { title: 'Pizza' })] },
-                { t: 'row', items: [soon('charts', 'chartScatter', null, 'btn', { title: 'Dispersão' })] },
+                { t: 'row', items: [{ cmd: 'chart-insert', arg: 'col', icon: 'chartCol', title: 'Inserir Gráfico de Colunas' }, { cmd: 'chart-insert', arg: 'bar', icon: 'chartBar', title: 'Inserir Gráfico de Barras' }] },
+                { t: 'row', items: [{ cmd: 'chart-insert', arg: 'line', icon: 'chartLine', title: 'Inserir Gráfico de Linhas' }, { cmd: 'chart-insert', arg: 'pie', icon: 'chartPie', title: 'Inserir Gráfico de Pizza' }] },
+                { t: 'row', items: [soon('scatter', 'chartScatter', null, 'btn', { title: 'Dispersão' })] },
               ] },
             ] },
             { label: 'Minigráficos', items: [soon('sparkline', 'sparkline', 'Minigráficos', 'big')] },
@@ -493,9 +584,13 @@
               ] },
             ] },
             { label: 'Ferramentas de Dados', items: [
-              soon('texttocols', 'textToCols', 'Texto para\nColunas', 'big'),
+              { t: 'big', cmd: 'texttocols', icon: 'textToCols', label: 'Texto para\nColunas' },
+              { t: 'big', cmd: 'flashfill', icon: 'flashFillBig', label: 'Preenchimento\nRelâmpago', title: 'Preenchimento Relâmpago (Ctrl+E)' },
               { t: 'big', cmd: 'dedupe', icon: 'removeDup', label: 'Remover\nDuplicatas' },
-              soon('validation', 'validation', 'Validação\nde Dados', 'big'),
+              { t: 'big', cmd: 'dv-dialog', icon: 'validation', label: 'Validação\nde Dados', title: 'Validação de Dados: listas suspensas e regras de entrada', menuId: 'dv', menu: [
+                { label: 'Validação de Dados...', cmd: 'dv-dialog', icon: 'validation' },
+                { label: 'Limpar Validação das Células', cmd: 'dv-clear' },
+              ] },
             ] },
             { label: 'Previsão', items: [soon('whatif', 'whatIf', 'Teste de\nHipóteses', 'big'), soon('forecast', 'forecast', 'Planilha de\nPrevisão', 'big')] },
           ],
@@ -528,6 +623,34 @@
         {
           id: 'help', label: 'Ajuda', groups: [
             { label: 'Ajuda', items: [{ t: 'big', cmd: 'shortcuts', icon: 'keyboard', label: 'Atalhos de\nTeclado' }] },
+          ],
+        },
+        {
+          id: 'tabledesign', label: 'Design da Tabela', contextual: () => !!tbl(), groups: [
+            { label: 'Propriedades', items: [{ t: 'col', items: [
+              { t: 'input', cmd: 'table-rename', label: 'Nome da Tabela:', width: 104, title: 'Nome da Tabela: usado nas fórmulas, ex.: =SOMA(Vendas[Total])', get: () => (tbl() || {}).name },
+            ] }] },
+            { label: 'Ferramentas', items: [{ t: 'col', items: [
+              { cmd: 'dedupe', icon: 'removeDup', label: 'Remover Duplicatas' },
+              { cmd: 'table-convert', icon: 'table', label: 'Converter em Intervalo', title: 'Converter em Intervalo: volta a ser células comuns (mantém a formatação)' },
+            ] }] },
+            { label: 'Opções de Estilo de Tabela', items: [{ t: 'col', items: [
+              { t: 'check', cmd: 'table-totals', label: 'Linha de Totais', get: () => (tbl() || {}).totalRow },
+              { t: 'check', cmd: 'table-banded', label: 'Linhas em Tiras', get: () => tbl() && tbl().banded !== false },
+              { t: 'check', cmd: 'table-filterbtn', label: 'Botão de Filtro', get: () => { const t = tbl(); return !!(t && app.sheet.filter && app.sheet.filter.table === t.name); } },
+            ] }] },
+            { label: 'Estilos de Tabela', items: [{ t: 'row', items: Object.keys(TS).map((k) => ({ cmd: 'table-style', arg: k, glyph: tblGlyph(k), title: 'Estilo ' + TS[k].label })) }] },
+          ],
+        },
+        {
+          id: 'chartdesign', label: 'Design do Gráfico', contextual: () => !!chart(), groups: [
+            { label: 'Tipo', items: [{ t: 'big', icon: 'chartCol', label: 'Alterar Tipo\nde Gráfico', menuOnly: true, menuId: 'chart-type', menu: chartTypes.map((x) => Object.assign({ cmd: 'chart-type' }, x)) }] },
+            { label: 'Layouts de Gráfico', items: [{ t: 'col', items: [
+              { cmd: 'chart-title', glyph: '<span style="font-size:11px;font-weight:700">T</span>', label: 'Título do Gráfico' },
+              { t: 'check', cmd: 'chart-legend', label: 'Legenda', get: () => (chart() || {}).legend },
+              { t: 'check', cmd: 'chart-labels', label: 'Rótulos de Dados', get: () => (chart() || {}).labels },
+            ] }] },
+            { label: 'Excluir', items: [{ t: 'big', cmd: 'chart-delete', icon: 'clear', label: 'Excluir\nGráfico', title: 'Excluir Gráfico (Delete)' }] },
           ],
         },
       ];

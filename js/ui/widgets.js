@@ -137,7 +137,7 @@
     if (buttons.length) {
       const foot = h('div.ui-modal-foot');
       buttons.forEach((b) => foot.appendChild(h('button.btn' + (b.primary ? '.btn-primary' : ''), {
-        type: 'button', onclick: () => { if (b.onClick && b.onClick(() => close()) === false) return; if (!b.keepOpen) close(); },
+        type: 'button', dataset: b.role ? { role: b.role } : undefined, onclick: () => { if (b.onClick && b.onClick(() => close()) === false) return; if (!b.keepOpen) close(); },
       }, b.label)));
       box.appendChild(foot);
     }

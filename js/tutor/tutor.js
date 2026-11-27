@@ -8,7 +8,10 @@
   // eventos que podem completar uma tarefa
   const CHECK_EVENTS = new Set(['select', 'commit', 'command', 'tab', 'namebox', 'fill', 'undo', 'redo', 'paste', 'copy', 'cut', 'format', 'clear', 'autosum', 'insertfn', 'colwidth', 'change', 'f4',
     'sort', 'filter', 'filtermenu', 'insert', 'delete', 'freeze', 'scroll', 'sheetadd', 'sheetrename', 'sheetswitch', 'sheetdelete',
-    'find', 'findall', 'findopen', 'replace', 'dedupe', 'pagesetup', 'printpreview', 'printclose', 'print']);
+    'find', 'findall', 'findopen', 'replace', 'dedupe', 'pagesetup', 'printpreview', 'printclose', 'print',
+    'texttocols', 'flashfill', 'formatcells',
+    'table', 'tablestyle', 'tablebanded', 'tabletotals', 'tablerename', 'tableconvert', 'tableexpand', 'calccolumn',
+    'chart', 'chartselect', 'chartchange', 'chartdelete', 'chartmove', 'chartresize', 'cf', 'cfclear', 'dv', 'dvclear', 'dvpick', 'dvopen', 'dverror']);
 
   class Tutor {
     constructor(app, lesson, opts = {}) {

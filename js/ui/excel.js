@@ -18,7 +18,8 @@
   const clone = (o) => JSON.parse(JSON.stringify(o || {}));
   // comandos que abrem uma janela (não devolvem o foco para a grade)
   const NOFOCUS = ['fx', 'insert-fn', 'colwidth', 'shortcuts', 'find', 'replace', 'sort-dialog', 'dedupe', 'print-preview',
-    'print-titles', 'insert-dialog', 'delete-dialog', 'sheet-rename', 'goto', 'sheet-delete'];
+    'print-titles', 'insert-dialog', 'delete-dialog', 'sheet-rename', 'goto', 'sheet-delete', 'format-cells-dialog', 'texttocols',
+    'table-create', 'cf', 'dv-dialog', 'chart-title', 'table-rename'];
 
   class ExcelApp extends XL.Emitter {
     constructor(container, opts = {}) {
@@ -152,6 +153,7 @@
       this.updateFormulaBar();
       this.updateStatus();
       this.ribbon.sync();
+      if (final) this.ribbon.updateContext();
       const data = { ref: XL.toRef(this.grid.sel.ar, this.grid.sel.ac), range: XL.rangeToStr(g) };
       this.emit(final ? 'select' : 'selecting', data);
     }
@@ -205,6 +207,10 @@
           return { ok: false, msg: e.message };
         }
       }
+      if (t[0] !== '=' && sheet.validationAt) {
+        const rule = sheet.validationAt(r, c);
+        if (rule && !sheet.checkValidation(rule, t)) return { ok: false, dv: rule };
+      }
       const before = sheet.cell(r, c);
       const prevInput = before ? XL.editTextFor(before) : '';
       if (t === prevInput && (!before || before.kind !== 'formula')) {
@@ -213,6 +219,7 @@
       }
       this.pushUndo();
       sheet.setInput(r, c, t);
+      if (sheet.tables.length && this.afterTableCommit) this.afterTableCommit(sheet, r, c, t);
       if (sheet.filter) sheet.extendFilter();
       this.render();
       this.emit('commit', { r, c, ref: XL.toRef(r, c), input: t, sheet: sheet.name });
@@ -249,10 +256,12 @@
         case 'valign': this.applyFmt({ valign: cur.valign === arg || arg === 'bottom' ? null : arg }); break;
         case 'wrap': this.applyFmt({ wrap: cur.wrap ? null : true }); break;
         case 'border': this.applyBorder(arg || 'bottom'); break;
-        case 'numfmt': this.applyFmt({ numFmt: arg === 'geral' ? null : arg, dec: null, grouping: null }); break;
-        case 'currency': this.applyFmt({ numFmt: 'contabil', dec: null, grouping: null }); break;
-        case 'percent': this.applyFmt({ numFmt: 'porcentagem', dec: null, grouping: null }); break;
-        case 'thousands': this.applyFmt({ numFmt: 'numero', dec: null, grouping: null }); break;
+        case 'numfmt':
+          if (arg === 'custom') { XL.Dialogs.formatCells(this); break; }
+          this.applyFmt({ numFmt: arg === 'geral' ? null : arg, dec: null, grouping: null, code: null }); break;
+        case 'currency': this.applyFmt({ numFmt: 'contabil', dec: null, grouping: null, code: null }); break;
+        case 'percent': this.applyFmt({ numFmt: 'porcentagem', dec: null, grouping: null, code: null }); break;
+        case 'thousands': this.applyFmt({ numFmt: 'numero', dec: null, grouping: null, code: null }); break;
         case 'dec-inc': this.changeDecimals(1); break;
         case 'dec-dec': this.changeDecimals(-1); break;
         case 'cellstyle': this.applyFmt(CELL_STYLES[arg] || {}); break;
@@ -592,7 +601,7 @@
         ['Alt+Enter', 'Quebra de linha dentro da célula'],
         ['Ctrl+L / Ctrl+U', 'Localizar / Substituir'], ['Ctrl+Shift+L', 'Liga/desliga o Filtro'],
         ['Ctrl+ + / Ctrl+ -', 'Inserir / excluir linhas ou colunas'], ['Ctrl+PageDown / PageUp', 'Próxima / anterior planilha'],
-        ['Ctrl+P', 'Visualizar Impressão'],
+        ['Ctrl+P', 'Visualizar Impressão'], ['Ctrl+T', 'Criar Tabela'], ['Alt+↓', 'Abrir a lista suspensa da célula'], ['Ctrl+1', 'Formatar Células'], ['Ctrl+E', 'Preenchimento Relâmpago'], ['Ctrl+D', 'Preencher para baixo (copiar)'],
       ];
       XL.ui.modal({
         title: 'Atalhos de teclado', width: 520,
@@ -606,6 +615,7 @@
     reset() {
       if (this.grid.editing) this.grid.cancel();
       this.cancelPainter();
+      this.selectedChart = null;
       XL.ui.closeAllModals && XL.ui.closeAllModals();
       if (XL.Find) XL.Find.close();
       if (XL.Print && XL.Print.current) XL.Print.current.close(true);

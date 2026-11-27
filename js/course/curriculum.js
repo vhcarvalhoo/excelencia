@@ -39,23 +39,33 @@
         id: 'intermediario', name: 'Intermediário', tag: 'Nível 2', color: '#2563eb',
         desc: 'Fórmulas que tomam decisões, buscam dados e resumem informações. Tabelas e gráficos.',
         modules: [
-          { id: 'm3', title: 'Lógica e condições', lessons: [
-            { id: 'i3-1', title: 'Função SE' }, { id: 'i3-2', title: 'E, OU e NÃO' },
-            { id: 'i3-3', title: 'SE aninhado e SES' }, { id: 'i3-4', title: 'Tratando erros com SEERRO' },
+          { id: 'm3', title: 'Lógica e condições', desc: 'Fórmulas que decidem sozinhas.', lessons: [
+            { id: 'i3-1', title: 'Função SE', minutes: 8, desc: 'Teste lógico, aspas nos textos e regra numa célula com $.' },
+            { id: 'i3-2', title: 'E, OU e NÃO', minutes: 7, desc: 'Várias condições: bônus, destaque e treinamento.' },
+            { id: 'i3-3', title: 'SE aninhado e SES', minutes: 7, desc: 'Mais de duas respostas: conceitos A, B, C, D.' },
+            { id: 'i3-4', title: 'Tratando erros com SEERRO', minutes: 6, desc: 'Evitar que um #DIV/0! estrague o relatório.' },
           ] },
-          { id: 'm4', title: 'Contar e somar com critérios', lessons: [
-            { id: 'i4-1', title: 'CONT.SE e CONT.SES' }, { id: 'i4-2', title: 'SOMASE e SOMASES' }, { id: 'i4-3', title: 'MÉDIASE e critérios com curingas' },
+          { id: 'm4', title: 'Contar e somar com critérios', desc: 'Responder perguntas sobre os dados.', lessons: [
+            { id: 'i4-1', title: 'CONT.SE e CONT.SES', minutes: 7, desc: 'Quantos pedidos? Quantos acima de R$ 2.000? E no Sul?' },
+            { id: 'i4-2', title: 'SOMASE e SOMASES', minutes: 8, desc: 'Totais por vendedor, produto e um resumo por região.' },
+            { id: 'i4-3', title: 'MÉDIASE e critérios com curingas', minutes: 7, desc: '"Mouse*", "*sem fio" e critérios vindos de células.' },
           ] },
-          { id: 'm5', title: 'Buscando dados', lessons: [
-            { id: 'i5-1', title: 'PROCV' }, { id: 'i5-2', title: 'PROCX: a busca moderna' }, { id: 'i5-3', title: 'ÍNDICE + CORRESP' },
+          { id: 'm5', title: 'Buscando dados', desc: 'Trazer informações de outra tabela.', lessons: [
+            { id: 'i5-1', title: 'PROCV', minutes: 9, desc: 'Nome e preço pelo código, FALSO, $ e o #N/D.' },
+            { id: 'i5-2', title: 'PROCX: a busca moderna', minutes: 7, desc: 'Buscar para qualquer lado e tratar o "não encontrado".' },
+            { id: 'i5-3', title: 'ÍNDICE + CORRESP', minutes: 8, desc: 'Busca em duas direções numa tabela de frete.' },
           ] },
-          { id: 'm6', title: 'Texto e datas', lessons: [
-            { id: 'i6-1', title: 'Funções de texto (ESQUERDA, EXT.TEXTO, CONCAT...)' }, { id: 'i6-2', title: 'Datas e prazos' },
-            { id: 'i6-3', title: 'Formatos personalizados e TEXTO' }, { id: 'i6-4', title: 'Texto para Colunas e Preenchimento Relâmpago' },
+          { id: 'm6', title: 'Texto e datas', desc: 'Limpar, separar e formatar informações.', lessons: [
+            { id: 'i6-1', title: 'Funções de texto', minutes: 8, desc: 'ARRUMAR, ESQUERDA, DIREITA, EXT.TEXTO e o &.' },
+            { id: 'i6-2', title: 'Datas e prazos', minutes: 8, desc: 'Datas são números: prazos, dias úteis e HOJE().' },
+            { id: 'i6-3', title: 'Formatos personalizados e TEXTO', minutes: 8, desc: 'Ctrl+1 › Personalizado: 0000, "kg", mmmm e TEXTO.' },
+            { id: 'i6-4', title: 'Texto para Colunas e Preenchimento Relâmpago', minutes: 7, desc: 'Separar um CSV e completar colunas com Ctrl+E.' },
           ] },
-          { id: 'm7', title: 'Tabelas e visualização', lessons: [
-            { id: 'i7-1', title: 'Formatar como Tabela' }, { id: 'i7-2', title: 'Gráficos de colunas, linhas e pizza' },
-            { id: 'i7-3', title: 'Formatação condicional' }, { id: 'i7-4', title: 'Validação de dados e listas suspensas' },
+          { id: 'm7', title: 'Tabelas e visualização', desc: 'Dados organizados, destacados e em gráficos.', lessons: [
+            { id: 'i7-1', title: 'Formatar como Tabela', minutes: 9, desc: 'Ctrl+T, linha de totais, [@Coluna] e a tabela que cresce sozinha.' },
+            { id: 'i7-2', title: 'Gráficos de colunas, linhas e pizza', minutes: 8, desc: 'Escolher o gráfico certo, título, rótulos e trocar o tipo.' },
+            { id: 'i7-3', title: 'Formatação condicional', minutes: 8, desc: 'Realçar regras, barras de dados, escalas de cor e fórmulas.' },
+            { id: 'i7-4', title: 'Validação de dados e listas suspensas', minutes: 7, desc: 'Listas para escolher, limites de valores e alertas de erro.' },
           ] },
         ],
       },
