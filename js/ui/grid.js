@@ -248,8 +248,20 @@
       this.drawRefs();
       this.drawGuides();
       this.drawFilterButtons();
+      if (this.app.drawPivotButtons) this.app.drawPivotButtons();
       this.drawBreaks();
       this.drawDv();
+      this.drawSpill();
+    }
+
+    // Borda azul em volta do resultado derramado (tracejada quando há #DESPEJAR!)
+    drawSpill() {
+      if (!this.spillBox) { this.spillBox = h('div.xl-spillbox'); this.filterLayer.parentNode.insertBefore(this.spillBox, this.filterLayer); }
+      const sp = this.editing ? null : this.sheet.spillAt(this.sel.ar, this.sel.ac);
+      if (!sp) { this.spillBox.style.display = 'none'; return; }
+      this.spillBox.style.display = '';
+      this.spillBox.classList.toggle('bad', !sp.ok);
+      this.place(this.spillBox, { r1: sp.r, c1: sp.c, r2: Math.min(this.R - 1, sp.r + sp.h - 1), c2: Math.min(this.C - 1, sp.c + sp.w - 1) }, 0);
     }
 
     // Seta da lista suspensa e mensagem de entrada da validação de dados
@@ -453,6 +465,9 @@
       this.cfMap = sh.conditionalStyles();
       for (const k of this.tblMap.keys()) keys.add(k);
       for (const k of this.cfMap.keys()) keys.add(k);
+      // células que recebem resultados "derramados" (FILTRO, ÚNICO, CLASSIFICAR...)
+      this.spillSet = sh.spillKeys();
+      for (const k of this.spillSet) keys.add(k);
       const bottom = new Set(), right = new Set(), topS = new Set(), leftS = new Set();
       for (const [k, cell] of sh.cells) {
         keys.add(k);
@@ -482,6 +497,8 @@
       this.applyFreeze();
       this.positionOverlays();
       if (XL.Charts) XL.Charts.draw(this);
+      if (this.app.drawSlicers) this.app.drawSlicers();
+      if (this.app.drawSparks) this.app.drawSparks();
     }
 
     // Retorna true se a célula mostra um número (para checar ####).
@@ -492,7 +509,7 @@
       const cv = td.firstChild;
       const cell = this.sheet.cell(r, c);
       const f = (cell && cell.fmt) || {};
-      const d = cell ? this.sheet.display(r, c, this.showFormulas) : { text: '', align: null };
+      const d = cell || (this.spillSet && this.spillSet.has(k)) ? this.sheet.display(r, c, this.showFormulas) : { text: '', align: null };
       cv.textContent = d.text;
       let align = f.align || d.align || 'left';
       if (this.showFormulas && cell && cell.kind === 'formula') align = 'left';
@@ -507,6 +524,7 @@
       cv.style.color = cs.color || f.color || ts.color || '';
       cv.style.fontFamily = f.font ? `"${f.font}", sans-serif` : '';
       cv.style.fontSize = f.size ? f.size + 'pt' : '';
+      cv.style.paddingLeft = f.indent ? 3 + f.indent * 14 + 'px' : '';
       td.style.verticalAlign = { top: 'top', middle: 'middle' }[f.valign] || '';
       cv.classList.toggle('wrap', !!f.wrap);
       const rightEmpty = c + 1 >= this.C || !this.sheet.has(r, c + 1);

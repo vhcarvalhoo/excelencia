@@ -10,7 +10,7 @@
     get isXLError() { return true; }
     toString() { return this.code; }
   }
-  const E = { DIV0: '#DIV/0!', VALUE: '#VALOR!', REF: '#REF!', NAME: '#NOME?', NA: '#N/D', NUM: '#NÚM!', NULL: '#NULO!', CALC: '#CALC!' };
+  const E = { DIV0: '#DIV/0!', VALUE: '#VALOR!', REF: '#REF!', NAME: '#NOME?', NA: '#N/D', NUM: '#NÚM!', NULL: '#NULO!', CALC: '#CALC!', SPILL: '#DESPEJAR!' };
   const err = (code, msg) => new XLError(code, msg);
   const isErr = (v) => v instanceof XLError;
 
@@ -20,6 +20,11 @@
     get w() { return this.rows[0] ? this.rows[0].length : 0; }
     flat() { return [].concat(...this.rows); }
     map(f) { return new Matrix(this.rows.map((row) => row.map(f))); }
+  }
+
+  // Função criada com LAMBDA (guarda os parâmetros, o corpo e o contexto onde nasceu)
+  class Lambda {
+    constructor(params, body, ctx) { this.params = params; this.body = body; this.ctx = ctx; }
   }
 
   class FormulaSyntaxError extends Error {
@@ -32,11 +37,11 @@
   const RE_COLRANGE = /^(\$?[A-Za-z]{1,3}):(\$?[A-Za-z]{1,3})(?![A-Za-zÀ-ÿ0-9_.(])/;
   const RE_NUM = /^\d+(?:[.,]\d+)?(?:[eE][+-]?\d+)?/;
   const RE_IDENT = /^[A-Za-zÀ-ÿ_][A-Za-zÀ-ÿ0-9_.]*/;
-  const RE_ERR = /^#(?:DIV\/0!|VALOR!|REF!|NOME\?|N\/D|NÚM!|NULO!|CALC!)/i;
+  const RE_ERR = /^#(?:DIV\/0!|VALOR!|REF!|NOME\?|N\/D|NÚM!|NULO!|CALC!|DESPEJAR!)/i;
   const RE_SHEET = /^(?:'((?:[^']|'')+)'|([A-Za-zÀ-ÿ_][A-Za-zÀ-ÿ0-9_.]*))!/;
   const RE_SREF = /^([A-Za-zÀ-ÿ_][A-Za-zÀ-ÿ0-9_.]*)?\[(?:(@)(?:\[([^[\]]+)\]|([^[\]]+))|([^[\]@#][^[\]]*))\]/;
   const OPS2 = ['<>', '<=', '>='];
-  const OPS1 = '+-*/^&=<>%():';
+  const OPS1 = '+-*/^&=<>%():#';
 
   // Nome de planilha como aparece numa fórmula (com aspas simples quando precisa).
   XL.quoteSheet = (name) =>
@@ -183,8 +188,29 @@
     }
     function postfix() {
       let e = primary();
-      while (isOp('%')) { p++; e = { t: 'pct', e }; }
-      return e;
+      for (;;) {
+        if (isOp('%')) { p++; e = { t: 'pct', e }; continue; }
+        if (isOp('#')) {
+          if (e.t !== 'ref') throw new FormulaSyntaxError('O operador # (intervalo derramado) vem logo depois de uma célula, como em A2#.');
+          p++; e = { t: 'spill', r: e.r, c: e.c, sheet: e.sheet }; continue;
+        }
+        if (isOp('(') && (e.t === 'func' || e.t === 'call' || e.t === 'paren')) {
+          p++;
+          const args = [];
+          if (isOp(')')) p++;
+          else {
+            for (;;) {
+              args.push(isSep() || isOp(')') ? { t: 'missing' } : comparison());
+              if (isSep()) { p++; continue; }
+              if (isOp(')')) { p++; break; }
+              throw new FormulaSyntaxError('Faltou fechar o parêntese da chamada da função.');
+            }
+          }
+          e = { t: 'call', fn: e, args };
+          continue;
+        }
+        return e;
+      }
     }
     function primary() {
       const t = toks[p];
@@ -266,6 +292,7 @@
         }
         n.args.forEach(walk);
       } else if (n.t === 'bin') { walk(n.l); walk(n.r); }
+      else if (n.t === 'call') { walk(n.fn); n.args.forEach(walk); }
       else if (n.e) walk(n.e);
     })(ast);
     return msg;
@@ -377,14 +404,37 @@
       case 'ref': return ctx.cell(node.r, node.c, node.sheet);
       case 'range': return ctx.range(node.r1, node.c1, node.r2, node.c2, node.sheet);
       case 'colrange': return ctx.range(0, node.c1, ctx.lastRow(node.sheet), node.c2, node.sheet);
-      case 'name': return err(E.NAME);
+      case 'name': {
+        const k = XL.normName(node.name);
+        if (ctx.scope && ctx.scope.has(k)) return ctx.scope.get(k);
+        if (ctx.name) { const v = ctx.name(k); if (v !== undefined) return v; }
+        return err(E.NAME, `"${node.name}" não é uma função, um nome definido nem uma variável do LET.`);
+      }
+      case 'spill': return ctx.spill ? ctx.spill(node.r, node.c, node.sheet) : err(E.REF);
+      case 'call': {
+        const f = evaluate(node.fn, ctx);
+        if (f instanceof Lambda) return callLambda(f, node.args, ctx);
+        return isErr(f) ? f : err(E.VALUE);
+      }
       case 'sref': return ctx.sref ? ctx.sref(node, false) : err(E.REF);
       case 'neg': return lift1(evaluate(node.e, ctx), (v) => { const n = toNum(v); return isErr(n) ? n : -n; });
       case 'pct': return lift1(evaluate(node.e, ctx), (v) => { const n = toNum(v); return isErr(n) ? n : n / 100; });
       case 'bin': return lift2(evaluate(node.l, ctx), evaluate(node.r, ctx), (x, y) => binScalar(node.op, x, y));
       case 'func': {
+        const fk = XL.normName(node.name);
+        if (fk === 'LET') return evalLet(node, ctx);
+        if (fk === 'LAMBDA') return evalLambda(node, ctx);
+        if (fk === 'TABELA') return ctx.dataTable ? ctx.dataTable() : err(E.REF);
+        if (ctx.scope && ctx.scope.has(fk)) {
+          const f = ctx.scope.get(fk);
+          return f instanceof Lambda ? callLambda(f, node.args, ctx) : err(E.VALUE);
+        }
         const def = XL.Functions.get(node.name);
-        if (!def) return err(E.NAME);
+        if (!def) {
+          const f = ctx.name ? ctx.name(fk) : undefined;
+          if (f instanceof Lambda) return callLambda(f, node.args, ctx);
+          return err(E.NAME);
+        }
         if (node.args.length < def.min || node.args.length > def.max) return err(E.VALUE);
         const args = node.args.map((a) => (a.t === 'ref' ? ctx.range(a.r, a.c, a.r, a.c, a.sheet)
           : a.t === 'sref' && a.thisRow && ctx.sref ? ctx.sref(a, true) : evaluate(a, ctx)));
@@ -399,6 +449,38 @@
       }
     }
     return err(E.VALUE);
+  }
+
+  // ---------- LET e LAMBDA ----------
+  const child = (ctx) => { const c = Object.create(ctx); c.scope = new Map(ctx.scope || []); c.depth = (ctx.depth || 0) + 1; return c; };
+  function evalLet(node, ctx) {
+    const a = node.args;
+    if (a.length < 3 || a.length % 2 === 0) return err(E.VALUE);
+    const c = child(ctx);
+    for (let i = 0; i < a.length - 1; i += 2) {
+      if (a[i].t !== 'name') return err(E.NAME, 'No LET, os nomes das variáveis vêm sem aspas, como em LET(x; 10; x*2).');
+      c.scope.set(XL.normName(a[i].name), evaluate(a[i + 1], c));
+    }
+    return evaluate(a[a.length - 1], c);
+  }
+  function evalLambda(node, ctx) {
+    const a = node.args;
+    if (!a.length) return err(E.VALUE);
+    const params = [];
+    for (let i = 0; i < a.length - 1; i++) {
+      if (a[i].t !== 'name') return err(E.VALUE, 'Os parâmetros do LAMBDA são nomes simples, como em LAMBDA(preço; preço*1,1).');
+      params.push(XL.normName(a[i].name));
+    }
+    return new Lambda(params, a[a.length - 1], ctx);
+  }
+  function callLambda(f, argNodes, ctx) {
+    if ((ctx.depth || 0) > 250) return err(E.NUM);
+    if (argNodes.length !== f.params.length) return err(E.VALUE, `Esta função espera ${f.params.length} argumento(s).`);
+    const vals = argNodes.map((n) => evaluate(n, ctx));
+    const c = child(f.ctx);
+    c.depth = Math.max(c.depth, (ctx.depth || 0) + 1);
+    f.params.forEach((p, i) => c.scope.set(p, vals[i]));
+    return evaluate(f.body, c);
   }
 
   // ---------- Utilitários de edição ----------
@@ -603,7 +685,7 @@
   }
 
   XL.XLError = XLError;
-  XL.Formula = {
+  XL.Formula = { Lambda,
     tokenize, parse, validate, evaluate, normalize, shiftFormula, refsIn, usesFunction, toggleAbsolute, funcContext,
     mapRefTokens, adjustStructure, adjustSpan, renameSheetRefs, dropSheetRefs,
     XLError, Matrix, E, err, isErr, toNum, toStr, toBool, scalar, compareValues, FormulaSyntaxError,

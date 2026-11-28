@@ -13,6 +13,7 @@
     }
 
     reset() {
+      this.names = []; // nomes definidos: { name, ref, comment }
       this.sheets = [];
       this.activeIndex = 0;
       this.addSheet('Planilha1');
@@ -60,6 +61,8 @@
         const ni = XL.Formula.renameSheetRefs(cell.input, old, sheet.name);
         if (ni !== cell.input) s.setFormulaText(cell, ni);
       });
+      for (const n of this.names) { n.ref = XL.Formula.renameSheetRefs(n.ref, old, sheet.name); n._ast = null; }
+      for (const s of this.sheets) for (const p of s.pivots || []) if (p.src.sheet && XL.normName(p.src.sheet) === XL.normName(old)) p.src.sheet = sheet.name;
       this.invalidateAll();
     }
 
@@ -78,6 +81,32 @@
     }
 
     invalidateAll() { for (const s of this.sheets) s.clearCache(); }
+
+    // ---------- Nomes definidos (Gerenciador de Nomes) ----------
+    nameByKey(k) { return this.names.find((n) => XL.normName(n.name) === k) || null; }
+    nameValue(k, sheet) {
+      const n = this.nameByKey(k);
+      if (!n) return undefined;
+      if (n._busy) return XL.Formula.err(XL.Formula.E.REF);
+      n._busy = true;
+      try {
+        if (!n._ast) n._ast = XL.Formula.parse(XL.Formula.normalize(n.ref).slice(1));
+        return XL.Formula.evaluate(n._ast, sheet.ctx);
+      } catch (e) {
+        return XL.Formula.err(XL.Formula.E.NAME);
+      } finally { n._busy = false; }
+    }
+    // Retorna a mensagem de erro (ou null) para um nome novo
+    validateDefinedName(name, except) {
+      const n = String(name || '').trim();
+      if (!n) return 'Digite um nome.';
+      if (!/^[A-Za-zÀ-ÿ_][A-Za-zÀ-ÿ0-9_.]*$/.test(n)) return 'O nome deve começar com uma letra ou _ e não pode ter espaços nem símbolos (use _ ou ponto).';
+      if (/^[A-Za-z]{1,3}\d+$/.test(n) || /^[RrCcLl]$/.test(n)) return `"${n}" parece um endereço de célula. Escolha outro nome.`;
+      if (XL.Functions.get(n)) return `"${n}" já é o nome de uma função do Excel.`;
+      const other = this.nameByKey(XL.normName(n));
+      if (other && other !== except) return `Já existe um nome "${other.name}".`;
+      return null;
+    }
 
     // ---------- Inserir / excluir linhas e colunas ----------
     // kind: 'insert'|'delete', axis: 'row'|'col', at: índice 0-based, n: quantidade
@@ -110,7 +139,10 @@
 
     // ---------- Desfazer ----------
     snapshot() {
-      return { active: this.activeIndex, sheets: this.sheets.map((s) => ({ name: s.name, sel: s.sel ? Object.assign({}, s.sel) : null, data: s.snapshot() })) };
+      return {
+        active: this.activeIndex, names: this.names.map((n) => ({ name: n.name, ref: n.ref, comment: n.comment || '' })),
+        sheets: this.sheets.map((s) => ({ name: s.name, sel: s.sel ? Object.assign({}, s.sel) : null, data: s.snapshot() })),
+      };
     }
     restore(snap) {
       this.sheets = snap.sheets.map((x) => {
@@ -121,6 +153,7 @@
       });
       snap.sheets.forEach((x, i) => this.sheets[i].restore(x.data));
       this.activeIndex = Math.min(snap.active, this.sheets.length - 1);
+      this.names = (snap.names || []).map((n) => Object.assign({}, n));
       this.invalidateAll();
     }
   }

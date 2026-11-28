@@ -29,6 +29,7 @@
         case 'chart-title': return XL.Dialogs.chartTitle(this);
         case 'chart-legend': return this.chartUpdate((c) => { c.legend = !!arg; });
         case 'chart-labels': return this.chartUpdate((c) => { c.labels = !!arg; });
+        case 'chart-trend': return this.chartUpdate((c) => { c.trend = !!arg; });
         case 'chart-delete': return this.deleteChart();
         // formatação condicional
         case 'cf': {

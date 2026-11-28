@@ -73,20 +73,28 @@
         id: 'avancado', name: 'Avançado', tag: 'Nível 3', color: '#7c3aed',
         desc: 'Análise de verdade: tabelas dinâmicas, fórmulas de matriz dinâmica e dashboards.',
         modules: [
-          { id: 'm8', title: 'Tabelas Dinâmicas', lessons: [
-            { id: 'a8-1', title: 'Criando sua primeira Tabela Dinâmica' }, { id: 'a8-2', title: 'Agrupamentos e campos calculados' },
-            { id: 'a8-3', title: 'Segmentação de dados e Linha do Tempo' }, { id: 'a8-4', title: 'Gráficos dinâmicos' },
+          { id: 'm8', title: 'Tabelas Dinâmicas', desc: 'Resumos poderosos sem fórmulas, filtros com botões e gráficos ligados.', lessons: [
+            { id: 'a8-1', title: 'Criando sua primeira Tabela Dinâmica', minutes: 10, desc: 'Linhas, Colunas, Valores, formato de moeda e classificar pelo valor.' },
+            { id: 'a8-2', title: 'Agrupamentos e campos calculados', minutes: 9, desc: 'Agrupar datas por mês, Lucro = Valor − Custo, % do total e Atualizar.' },
+            { id: 'a8-3', title: 'Segmentação de dados e Linha do Tempo', minutes: 7, desc: 'Filtros em botões: regiões, seleção múltipla e períodos.' },
+            { id: 'a8-4', title: 'Gráficos dinâmicos', minutes: 7, desc: 'Gráfico ligado à Tabela Dinâmica que muda com campos e filtros.' },
           ] },
-          { id: 'm9', title: 'Fórmulas modernas', lessons: [
-            { id: 'a9-1', title: 'Matrizes dinâmicas: FILTRO, CLASSIFICAR, ÚNICO' }, { id: 'a9-2', title: 'LET: fórmulas legíveis' },
-            { id: 'a9-3', title: 'LAMBDA: crie suas próprias funções' }, { id: 'a9-4', title: 'SOMARPRODUTO e cálculos com matrizes' },
+          { id: 'm9', title: 'Fórmulas modernas', desc: 'Uma fórmula, um relatório inteiro: matrizes dinâmicas, LET e LAMBDA.', lessons: [
+            { id: 'a9-1', title: 'Matrizes dinâmicas: FILTRO, CLASSIFICAR, ÚNICO', minutes: 9, desc: 'Resultados que derramam, a referência F2# e o erro #DESPEJAR!.' },
+            { id: 'a9-2', title: 'LET: fórmulas legíveis', minutes: 7, desc: 'Dar nomes a contas repetidas e a listas inteiras.' },
+            { id: 'a9-3', title: 'LAMBDA: crie suas próprias funções', minutes: 8, desc: 'A função COMISSAO com Definir Nome e Gerenciador de Nomes.' },
+            { id: 'a9-4', title: 'SOMARPRODUTO e cálculos com matrizes', minutes: 7, desc: 'Contas com intervalos inteiros e condições que viram 1 e 0.' },
           ] },
-          { id: 'm10', title: 'Análise e cenários', lessons: [
-            { id: 'a10-1', title: 'Atingir Meta' }, { id: 'a10-2', title: 'Gerenciador de Cenários e Tabela de Dados' },
-            { id: 'a10-3', title: 'Solver' }, { id: 'a10-4', title: 'Previsões e tendências' },
+          { id: 'm10', title: 'Análise e cenários', desc: 'Perguntas "e se?", a melhor decisão e previsões.', lessons: [
+            { id: 'a10-1', title: 'Atingir Meta', minutes: 7, desc: 'Valor do empréstimo, prazo necessário e ponto de equilíbrio.' },
+            { id: 'a10-2', title: 'Gerenciador de Cenários e Tabela de Dados', minutes: 9, desc: 'Vários preços de uma vez e cenários Otimista/Pessimista com resumo.' },
+            { id: 'a10-3', title: 'Solver', minutes: 9, desc: 'O mix de produção que dá o maior lucro, com restrições.' },
+            { id: 'a10-4', title: 'Previsões e tendências', minutes: 8, desc: 'INCLINAÇÃO, PREVISÃO.LINEAR, TENDÊNCIA, R² e linha de tendência.' },
           ] },
-          { id: 'm11', title: 'Dashboards', lessons: [
-            { id: 'a11-1', title: 'Princípios de um bom dashboard' }, { id: 'a11-2', title: 'KPIs e minigráficos' }, { id: 'a11-3', title: 'Dashboard interativo completo' },
+          { id: 'm11', title: 'Dashboards', desc: 'Painéis claros e interativos para quem decide.', lessons: [
+            { id: 'a11-1', title: 'Princípios de um bom dashboard', minutes: 6, desc: 'Ordenar, escolher o gráfico, título com mensagem e menos ruído.' },
+            { id: 'a11-2', title: 'KPIs e minigráficos', minutes: 8, desc: 'Total, variação, destaque do que piorou e gráficos dentro das células.' },
+            { id: 'a11-3', title: 'Dashboard interativo completo', minutes: 9, desc: 'Gráficos dinâmicos e uma segmentação ligada a todo o painel.' },
           ] },
         ],
       },

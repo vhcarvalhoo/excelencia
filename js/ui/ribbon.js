@@ -17,16 +17,10 @@
     merge: 'Mesclar células: <b>Nível Intermediário</b> (dica: prefira "Centralizar na Seleção").',
     orient: 'Orientação do texto: <b>Nível Intermediário</b>.',
     indent: 'Recuo: <b>Nível Intermediário</b>.',
-    pivot: 'Tabelas Dinâmicas: <b>Nível Avançado</b>.',
     scatter: 'Gráfico de Dispersão: <b>Nível Avançado</b> (Análise de dados).',
-    sparkline: 'Minigráficos: <b>Nível Avançado</b> (Dashboards).',
-    slicer: 'Segmentação de Dados e Linha do Tempo: <b>Nível Avançado</b>.',
     pictures: 'Imagens e ilustrações não fazem parte das lições atuais.',
     powerquery: 'Power Query (Obter e Transformar Dados): <b>Nível Expert</b> — a ferramenta mais poderosa para importar e tratar dados!',
-    refresh: 'Atualizar consultas: <b>Nível Expert</b> (Power Query).',
-    whatif: 'Teste de Hipóteses (Atingir Meta, Cenários): <b>Nível Avançado</b>.',
-    forecast: 'Planilha de Previsão: <b>Nível Avançado</b>.',
-    names: 'Nomes definidos: <b>Nível Intermediário</b>.',
+    forecast: 'Planilha de Previsão: no simulador, faça previsões com <b>PREVISÃO.LINEAR</b> e <b>TENDÊNCIA</b> (lição 10.4).',
     audit: 'Auditoria de fórmulas: <b>Nível Intermediário</b>.',
     automate: 'Macros, VBA e Office Scripts: <b>Nível Expert</b> (Automação).',
     generic: 'Este recurso ainda não está disponível no simulador.',
@@ -83,10 +77,13 @@
       }
       const cur = this.tabs.find((t) => t.id === this.active);
       const t = app.activeTable ? app.activeTable() : null;
-      const key = (t ? t.name : '') + '|' + (app.selectedChart || '');
+      const pv = app.activePivot ? app.activePivot() : null;
+      const sp = app.activeSpark ? app.activeSpark() : null;
+      const key = (t ? t.name : '') + '|' + (app.selectedChart || '') + '|' + (pv ? pv.id : '') + '|' + (sp ? sp.id : '');
       if (cur && cur.contextual && !this.visible(cur)) this.setTab('home', true);
       else if (cur && cur.contextual && key !== this.ctxKey) this.setTab(this.active, true);
       this.ctxKey = key;
+      if (app.updatePivotPane) app.updatePivotPane();
     }
 
     setTab(id, silent) {
@@ -280,6 +277,7 @@
       if (this.sel_size && this.bodyEl.contains(this.sel_size)) this.sel_size.value = String(f.size || 11);
       if (this.sel_numfmt && this.bodyEl.contains(this.sel_numfmt)) this.sel_numfmt.value = f.numFmt === 'custom' ? 'custom' : f.numFmt || 'geral';
       on('filter-toggle', undefined, !!app.sheet.filter);
+      on('pivot-fieldlist', undefined, !app.pivotPaneOff);
       const p = app.sheet.page;
       const fw = this['sel_page-fitw'], fh = this['sel_page-fith'];
       if (fw && this.bodyEl.contains(fw)) fw.value = p.fit === 'sheet' || p.fit === 'cols' ? '1' : 'auto';
@@ -362,6 +360,9 @@
       ];
       const tbl = () => (app.grid && app.activeTable ? app.activeTable() : null);
       const chart = () => (app.grid && app.activeChart ? app.activeChart() : null);
+      const pvt = () => (app.grid && app.activePivot ? app.activePivot() : null);
+      const spk = () => (app.grid && app.activeSpark ? app.activeSpark() : null);
+      const pvGlyph = (k) => `<span class="tbl-sw pv-sw"><i style="background:${TS[k].band}"></i><i></i><i style="background:${TS[k].band}"></i><i style="background:${TS[k].band}"></i></span>`;
 
       return [
         { id: 'file', label: 'Arquivo' },
@@ -488,7 +489,7 @@
         },
         {
           id: 'insert', label: 'Inserir', groups: [
-            { label: 'Tabelas', items: [soon('pivot', 'pivot', 'Tabela\nDinâmica', 'big'), { t: 'big', cmd: 'table-create', icon: 'tableBig', label: 'Tabela', title: 'Tabela (Ctrl+T)' }] },
+            { label: 'Tabelas', items: [{ t: 'big', cmd: 'pivot-create', icon: 'pivot', label: 'Tabela\nDinâmica', title: 'Tabela Dinâmica: resuma os dados em segundos' }, { t: 'big', cmd: 'table-create', icon: 'tableBig', label: 'Tabela', title: 'Tabela (Ctrl+T)' }] },
             { label: 'Ilustrações', items: [soon('pictures', 'pictures', 'Imagens', 'big')] },
             { label: 'Gráficos', items: [
               { t: 'big', cmd: 'chart-insert', arg: 'rec', icon: 'chartRec', label: 'Gráficos\nRecomendados', title: 'Gráficos Recomendados: o simulador escolhe o tipo pelos seus dados' },
@@ -498,8 +499,15 @@
                 { t: 'row', items: [soon('scatter', 'chartScatter', null, 'btn', { title: 'Dispersão' })] },
               ] },
             ] },
-            { label: 'Minigráficos', items: [soon('sparkline', 'sparkline', 'Minigráficos', 'big')] },
-            { label: 'Filtros', items: [soon('slicer', 'slicer', 'Segmentação\nde Dados', 'big')] },
+            { label: 'Minigráficos', items: [{ t: 'col', items: [
+              { cmd: 'spark-insert', arg: 'line', icon: 'chartLine', label: 'Linha', title: 'Minigráfico de Linha: tendência dentro de uma célula' },
+              { cmd: 'spark-insert', arg: 'col', icon: 'chartCol', label: 'Coluna', title: 'Minigráfico de Coluna' },
+              { cmd: 'spark-insert', arg: 'winloss', icon: 'sparkline', label: 'Ganho/Perda', title: 'Minigráfico de Ganho/Perda: só mostra se subiu ou caiu' },
+            ] }] },
+            { label: 'Filtros', items: [
+              { t: 'big', cmd: 'pivot-slicer', icon: 'slicer', label: 'Segmentação\nde Dados', title: 'Segmentação de Dados: botões para filtrar a Tabela Dinâmica' },
+              { t: 'big', cmd: 'pivot-timeline', icon: 'dateTime', label: 'Linha do\nTempo', title: 'Linha do Tempo: filtre a Tabela Dinâmica por período' },
+            ] },
           ],
         },
         { id: 'draw', label: 'Desenhar', empty: 'A guia Desenhar (caneta e marca-texto) não é usada nas lições.' },
@@ -549,7 +557,10 @@
               { t: 'big', icon: 'math', label: 'Matemática e\nTrigonometria', menuOnly: true, menuId: 'fn-mat', menu: fnMenu('Matemática e Trigonometria') },
               { t: 'big', icon: 'more', label: 'Mais\nFunções', menuOnly: true, menuId: 'fn-est', menu: fnMenu('Estatística') },
             ] },
-            { label: 'Nomes Definidos', items: [soon('names', 'names', 'Gerenciador\nde Nomes', 'big')] },
+            { label: 'Nomes Definidos', items: [
+              { t: 'big', cmd: 'name-manager', icon: 'names', label: 'Gerenciador\nde Nomes', title: 'Gerenciador de Nomes (Ctrl+F3): veja, edite e exclua nomes' },
+              { t: 'col', items: [{ cmd: 'name-define', glyph: '<span style="font-size:12px;font-weight:700">a</span>', label: 'Definir Nome', title: 'Definir Nome: dê um nome a um intervalo, valor ou fórmula (inclusive LAMBDA)' }] },
+            ] },
             { label: 'Auditoria de Fórmulas', items: [
               { t: 'col', items: [
                 soon('audit', 'tracePrec', 'Rastrear Precedentes'),
@@ -570,7 +581,7 @@
               soon('powerquery', 'getData', 'Obter\nDados', 'big'),
               { t: 'col', items: [soon('powerquery', 'csv', 'De Texto/CSV'), soon('powerquery', 'web', 'Da Web'), soon('powerquery', 'fromTable', 'De Tabela/Intervalo')] },
             ] },
-            { label: 'Consultas e Conexões', items: [soon('refresh', 'refresh', 'Atualizar\nTudo', 'big')] },
+            { label: 'Consultas e Conexões', items: [{ t: 'big', cmd: 'pivot-refresh-all', icon: 'refresh', label: 'Atualizar\nTudo', title: 'Atualizar Tudo: recalcula todas as Tabelas Dinâmicas com os dados atuais' }] },
             { label: 'Classificar e Filtrar', items: [
               { t: 'col', items: [
                 { cmd: 'sort', arg: 'asc', icon: 'sortAZ', title: 'Classificar de A a Z (menor para o maior)' },
@@ -592,7 +603,15 @@
                 { label: 'Limpar Validação das Células', cmd: 'dv-clear' },
               ] },
             ] },
-            { label: 'Previsão', items: [soon('whatif', 'whatIf', 'Teste de\nHipóteses', 'big'), soon('forecast', 'forecast', 'Planilha de\nPrevisão', 'big')] },
+            { label: 'Previsão', items: [
+              { t: 'big', icon: 'whatIf', label: 'Teste de\nHipóteses', menuOnly: true, menuId: 'whatif', menu: [
+                { label: 'Gerenciador de Cenários...', cmd: 'scenario-manager' },
+                { label: 'Atingir Meta...', cmd: 'goalseek' },
+                { label: 'Tabela de Dados...', cmd: 'datatable' },
+              ] },
+              soon('forecast', 'forecast', 'Planilha de\nPrevisão', 'big'),
+            ] },
+            { label: 'Análise', items: [{ t: 'big', cmd: 'solver', icon: 'calc', label: 'Solver', title: 'Solver: encontra a melhor solução (máximo ou mínimo) respeitando restrições' }] },
           ],
         },
         { id: 'review', label: 'Revisão', empty: 'A guia Revisão (comentários, proteção) não é usada nas lições atuais.' },
@@ -626,6 +645,68 @@
           ],
         },
         {
+          id: 'sparkdesign', label: 'Minigráfico', contextual: () => !!spk(), groups: [
+            { label: 'Tipo', items: [
+              { t: 'big', cmd: 'spark-type', arg: 'line', icon: 'chartLine', label: 'Linha' },
+              { t: 'big', cmd: 'spark-type', arg: 'col', icon: 'chartCol', label: 'Coluna' },
+              { t: 'big', cmd: 'spark-type', arg: 'winloss', icon: 'sparkline', label: 'Ganho/\nPerda' },
+            ] },
+            { label: 'Mostrar', items: [{ t: 'col', items: [
+              { t: 'check', cmd: 'spark-high', label: 'Ponto Alto', get: () => (spk() || {}).high },
+              { t: 'check', cmd: 'spark-low', label: 'Ponto Baixo', get: () => (spk() || {}).low },
+              { t: 'check', cmd: 'spark-markers', label: 'Marcadores', get: () => (spk() || {}).markers },
+            ] }] },
+            { label: 'Agrupar', items: [{ t: 'big', cmd: 'spark-clear', icon: 'clear', label: 'Limpar', title: 'Limpar os minigráficos selecionados' }] },
+          ],
+        },
+        {
+          id: 'pivotanalyze', label: 'Análise da Tabela Dinâmica', contextual: () => !!pvt(), groups: [
+            { label: 'Tabela Dinâmica', items: [{ t: 'col', items: [
+              { t: 'input', cmd: 'pivot-rename', label: 'Nome da Tabela Dinâmica:', width: 130, get: () => (pvt() || {}).name },
+            ] }] },
+            { label: 'Campo Ativo', items: [{ t: 'big', cmd: 'pivot-settings', icon: 'formatCells', label: 'Configurações\ndo Campo', title: 'Configurações do Campo de Valor (resumir por Soma, Contagem, Média...)' }] },
+            { label: 'Agrupar', items: [{ t: 'col', items: [
+              { cmd: 'pivot-group', glyph: '<span style="font-size:13px">⇥</span>', label: 'Agrupar Seleção', title: 'Agrupar Seleção: datas por meses/anos ou números em faixas' },
+              { cmd: 'pivot-ungroup', glyph: '<span style="font-size:13px">⇤</span>', label: 'Desagrupar' },
+            ] }] },
+            { label: 'Filtrar', items: [{ t: 'col', items: [
+              { cmd: 'pivot-slicer', icon: 'slicer', label: 'Inserir Segmentação de Dados' },
+              { cmd: 'pivot-timeline', icon: 'dateTime', label: 'Inserir Linha do Tempo' },
+            ] }] },
+            { label: 'Dados', items: [{ t: 'big', cmd: 'pivot-refresh', icon: 'refresh', label: 'Atualizar', title: 'Atualizar: busca de novo os dados de origem', menuId: 'pivot-refresh', menu: [
+              { label: 'Atualizar', cmd: 'pivot-refresh', icon: 'refreshSm' },
+              { label: 'Atualizar Tudo', cmd: 'pivot-refresh-all' },
+            ] }] },
+            { label: 'Cálculos', items: [{ t: 'big', icon: 'fx', label: 'Campos, Itens\ne Conjuntos', menuOnly: true, menuId: 'pivot-calcs', menu: [
+              { label: 'Campo Calculado...', cmd: 'pivot-calc' },
+            ] }] },
+            { label: 'Ferramentas', items: [{ t: 'big', icon: 'chartCol', label: 'Gráfico\nDinâmico', menuOnly: true, menuId: 'pivot-chart', menu: [
+              { label: 'Colunas Agrupadas', cmd: 'pivot-chart', arg: 'col', icon: 'chartCol' },
+              { label: 'Barras Agrupadas', cmd: 'pivot-chart', arg: 'bar', icon: 'chartBar' },
+              { label: 'Linhas', cmd: 'pivot-chart', arg: 'line', icon: 'chartLine' },
+              { label: 'Pizza', cmd: 'pivot-chart', arg: 'pie', icon: 'chartPie' },
+            ] }] },
+            { label: 'Mostrar', items: [{ t: 'big', cmd: 'pivot-fieldlist', icon: 'names', label: 'Lista de\nCampos', title: 'Mostrar/ocultar a Lista de Campos' }] },
+          ],
+        },
+        {
+          id: 'pivotdesign', label: 'Design', contextual: () => !!pvt(), groups: [
+            { label: 'Layout', items: [
+              { t: 'big', icon: 'formatCells', label: 'Subtotais', menuOnly: true, menuId: 'pivot-subtotals', menu: [
+                { label: 'Não Mostrar Subtotais', cmd: 'pivot-subtotals', arg: 'off' },
+                { label: 'Mostrar Todos os Subtotais na Parte Superior do Grupo', cmd: 'pivot-subtotals', arg: 'on' },
+              ] },
+              { t: 'big', icon: 'sigmaBig', label: 'Totais\nGerais', menuOnly: true, menuId: 'pivot-grand', menu: [
+                { label: 'Desabilitado para Linhas e Colunas', cmd: 'pivot-grand', arg: 'off' },
+                { label: 'Habilitado para Linhas e Colunas', cmd: 'pivot-grand', arg: 'on' },
+                { label: 'Habilitado somente para Linhas', cmd: 'pivot-grand', arg: 'rows' },
+                { label: 'Habilitado somente para Colunas', cmd: 'pivot-grand', arg: 'cols' },
+              ] },
+            ] },
+            { label: 'Estilos de Tabela Dinâmica', items: [{ t: 'row', items: Object.keys(TS).map((k) => ({ cmd: 'pivot-style', arg: k, glyph: pvGlyph(k), title: 'Estilo ' + TS[k].label })) }] },
+          ],
+        },
+        {
           id: 'tabledesign', label: 'Design da Tabela', contextual: () => !!tbl(), groups: [
             { label: 'Propriedades', items: [{ t: 'col', items: [
               { t: 'input', cmd: 'table-rename', label: 'Nome da Tabela:', width: 104, title: 'Nome da Tabela: usado nas fórmulas, ex.: =SOMA(Vendas[Total])', get: () => (tbl() || {}).name },
@@ -649,6 +730,7 @@
               { cmd: 'chart-title', glyph: '<span style="font-size:11px;font-weight:700">T</span>', label: 'Título do Gráfico' },
               { t: 'check', cmd: 'chart-legend', label: 'Legenda', get: () => (chart() || {}).legend },
               { t: 'check', cmd: 'chart-labels', label: 'Rótulos de Dados', get: () => (chart() || {}).labels },
+              { t: 'check', cmd: 'chart-trend', label: 'Linha de Tendência', get: () => (chart() || {}).trend },
             ] }] },
             { label: 'Excluir', items: [{ t: 'big', cmd: 'chart-delete', icon: 'clear', label: 'Excluir\nGráfico', title: 'Excluir Gráfico (Delete)' }] },
           ],

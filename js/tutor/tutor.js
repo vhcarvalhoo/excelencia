@@ -11,7 +11,11 @@
     'find', 'findall', 'findopen', 'replace', 'dedupe', 'pagesetup', 'printpreview', 'printclose', 'print',
     'texttocols', 'flashfill', 'formatcells',
     'table', 'tablestyle', 'tablebanded', 'tabletotals', 'tablerename', 'tableconvert', 'tableexpand', 'calccolumn',
-    'chart', 'chartselect', 'chartchange', 'chartdelete', 'chartmove', 'chartresize', 'cf', 'cfclear', 'dv', 'dvclear', 'dvpick', 'dvopen', 'dverror']);
+    'chart', 'chartselect', 'chartchange', 'chartdelete', 'chartmove', 'chartresize', 'cf', 'cfclear', 'dv', 'dvclear', 'dvpick', 'dvopen', 'dverror',
+    'pivot', 'pivotfield', 'pivotchange', 'pivotsettings', 'pivotrefresh', 'pivotgroup', 'pivotcalc', 'pivotsort', 'pivotfilter', 'pivotmenu',
+    'pivotlayout', 'pivotstyle', 'pivotrename', 'pivotchart', 'slicer', 'slicerpick', 'slicermulti', 'slicerdelete', 'timeline', 'timelinepick', 'name', 'namedelete',
+    'goalseek', 'datatable', 'scenario', 'scenarioshow', 'scenariosummary', 'solvermodel', 'solver', 'chartchange',
+    'spark', 'sparkchange', 'sparkclear', 'slicerconn']);
 
   class Tutor {
     constructor(app, lesson, opts = {}) {
@@ -203,7 +207,7 @@
       const app = this.app;
       return {
         wb: app.wb.snapshot(), undo: app.undoStack.slice(), tab: app.ribbon.active, sel: Object.assign({}, app.grid.sel),
-        top: app.grid.scroller.scrollTop, left: app.grid.scroller.scrollLeft,
+        top: app.grid.scroller.scrollTop, left: app.grid.scroller.scrollLeft, gridlines: app.grid.gridlines,
       };
     }
     restore(s) {
@@ -222,6 +226,7 @@
       app.grid.setSel(s.sel.ar, s.sel.ac, s.sel.fr, s.sel.fc, false);
       app.grid.scroller.scrollTop = s.top;
       app.grid.scroller.scrollLeft = s.left;
+      if (s.gridlines !== undefined && app.grid.gridlines !== s.gridlines) { app.grid.setGridlines(s.gridlines); app.ribbon.setTab(app.ribbon.active, true); }
       this.settingUp = false;
     }
 
