@@ -551,5 +551,157 @@
     return -(fv + (pmt * (1 + r * t) * (q - 1)) / r) / q;
   });
 
+  // ================= Matrizes dinâmicas (o resultado "derrama" nas células vizinhas) =================
+  const rowKey = (row) => row.map((v) => (typeof v === 'string' ? 's:' + v.toLocaleLowerCase('pt-BR') : typeof v + ':' + (isErr(v) ? v.code : v))).join('\u0001');
+  const sortCmp = (x, y) => {
+    const ex = x === null || x === '', ey = y === null || y === '';
+    if (ex || ey) return ex && ey ? 0 : ex ? 1 : -1; // vazios sempre no fim
+    return compareValues(x, y);
+  };
+  const transpose = (m) => new Matrix(m.rows[0].map((_, j) => m.rows.map((r) => r[j])));
+  def('FILTRO', 'FILTER', PR, 'matriz; incluir; [se_vazio]', 'Filtra um intervalo de dados com base nos critérios que você definir. O resultado derrama nas células abaixo.', (a) => {
+    const m = M(a[0]), inc = M(a[1]);
+    let keep;
+    if (inc.h === m.h && inc.w === 1) keep = inc.rows.map((r) => r[0]);
+    else if (inc.w === m.w && inc.h === 1) keep = inc.rows[0];
+    else throw err(E.VALUE, 'O argumento "incluir" deve ter a mesma altura (ou largura) da matriz.');
+    const truthy = keep.map((v) => { if (isErr(v)) throw v; const b = toBool(v); if (isErr(b)) throw b; return b; });
+    const byRow = inc.h === m.h && inc.w === 1;
+    const rows = byRow ? m.rows.filter((_, i) => truthy[i]) : m.rows.map((r) => r.filter((_, j) => truthy[j]));
+    if (!rows.length || !rows[0].length) {
+      if (has(a[2])) return a[2];
+      throw err(E.CALC, 'O FILTRO não encontrou nenhum resultado. Use o 3º argumento para mostrar uma mensagem, como "Nenhum".');
+    }
+    return new Matrix(rows);
+  });
+  def('CLASSIFICAR', 'SORT', PR, 'matriz; [índice_classificação]; [ordem_classificação]; [por_col]', 'Classifica o conteúdo de um intervalo: índice = número da coluna; ordem 1 = crescente, -1 = decrescente.', (a) => {
+    let m = M(a[0]);
+    const byCol = has(a[3]) && B(a[3]);
+    if (byCol) m = transpose(m);
+    const idx = has(a[1]) ? Math.trunc(N(a[1])) : 1;
+    const ord = has(a[2]) ? Math.trunc(N(a[2])) : 1;
+    if (idx < 1 || idx > m.w || (ord !== 1 && ord !== -1)) throw err(E.VALUE);
+    const rows = m.rows.slice().sort((x, y) => { const ex = x[idx - 1] === null || x[idx - 1] === ''; const ey = y[idx - 1] === null || y[idx - 1] === ''; if (ex || ey) return sortCmp(x[idx - 1], y[idx - 1]); return compareValues(x[idx - 1], y[idx - 1]) * ord; });
+    const out = new Matrix(rows);
+    return byCol ? transpose(out) : out;
+  });
+  def('CLASSIFICARPOR', 'SORTBY', PR, 'matriz; por_matriz1; [ordem1]; ...', 'Classifica um intervalo pelos valores de outro intervalo (pode ter vários critérios).', (a) => {
+    const m = M(a[0]);
+    const keys = [];
+    for (let i = 1; i < a.length; i += 2) {
+      const k = M(a[i]);
+      const ord = has(a[i + 1]) ? Math.trunc(N(a[i + 1])) : 1;
+      if (k.h !== m.h || k.w !== 1) throw err(E.VALUE, 'Cada "por_matriz" deve ser uma coluna com a mesma altura da matriz.');
+      keys.push({ v: k.rows.map((r) => r[0]), ord });
+    }
+    const idx = m.rows.map((_, i) => i);
+    idx.sort((x, y) => { for (const k of keys) { const ex = k.v[x] === null || k.v[x] === '', ey = k.v[y] === null || k.v[y] === ''; const c = ex || ey ? sortCmp(k.v[x], k.v[y]) : compareValues(k.v[x], k.v[y]) * k.ord; if (c) return c; } return x - y; });
+    return new Matrix(idx.map((i) => m.rows[i]));
+  });
+  def('ÚNICO', 'UNIQUE', PR, 'matriz; [por_col]; [exatamente_uma_vez]', 'Retorna os valores únicos (sem repetição) de um intervalo. O resultado derrama nas células abaixo.', (a) => {
+    let m = M(a[0]);
+    const byCol = has(a[1]) && B(a[1]);
+    const once = has(a[2]) && B(a[2]);
+    if (byCol) m = transpose(m);
+    const count = new Map();
+    m.rows.forEach((r) => { const k = rowKey(r); count.set(k, (count.get(k) || 0) + 1); });
+    const seen = new Set();
+    const rows = [];
+    for (const r of m.rows) {
+      const k = rowKey(r);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      if (once && count.get(k) > 1) continue;
+      rows.push(r);
+    }
+    if (!rows.length) throw err(E.CALC);
+    const out = new Matrix(rows);
+    return byCol ? transpose(out) : out;
+  });
+  def('SEQUÊNCIA', 'SEQUENCE', MAT, 'linhas; [colunas]; [início]; [etapa]', 'Gera uma lista de números em sequência: =SEQUÊNCIA(5) dá 1, 2, 3, 4, 5.', (a) => {
+    const h = Math.trunc(N(a[0])), w = has(a[1]) ? Math.trunc(N(a[1])) : 1;
+    const start = has(a[2]) ? N(a[2]) : 1, step = has(a[3]) ? N(a[3]) : 1;
+    if (h < 1 || w < 1 || h * w > 100000) throw err(E.VALUE);
+    const rows = [];
+    for (let i = 0; i < h; i++) { const row = []; for (let j = 0; j < w; j++) row.push(start + (i * w + j) * step); rows.push(row); }
+    return new Matrix(rows);
+  });
+  if (!F.get('TRANSPOR')) def('TRANSPOR', 'TRANSPOSE', PR, 'matriz', 'Vira as linhas em colunas e as colunas em linhas.', (a) => transpose(M(a[0])));
+  // ================= Previsão (regressão linear) =================
+  const pairs = (ys, xs) => {
+    const Y = M(ys).flat(), X = M(xs).flat();
+    if (Y.length !== X.length) throw err(E.NA);
+    const out = [];
+    for (let i = 0; i < Y.length; i++) { if (isErr(Y[i])) throw Y[i]; if (isErr(X[i])) throw X[i]; if (typeof Y[i] === 'number' && typeof X[i] === 'number') out.push([X[i], Y[i]]); }
+    return out;
+  };
+  const fit = (ys, xs) => {
+    const p = pairs(ys, xs);
+    if (p.length < 2) throw err(E.DIV0);
+    const n = p.length;
+    const mx = p.reduce((s, q) => s + q[0], 0) / n, my = p.reduce((s, q) => s + q[1], 0) / n;
+    let sxy = 0, sxx = 0, syy = 0;
+    for (const [x, y] of p) { sxy += (x - mx) * (y - my); sxx += (x - mx) * (x - mx); syy += (y - my) * (y - my); }
+    if (sxx === 0) throw err(E.DIV0);
+    const slope = sxy / sxx;
+    return { slope, icpt: my - slope * mx, sxy, sxx, syy };
+  };
+  const seq = (n) => new Matrix(Array.from({ length: n }, (_, i) => [i + 1]));
+  def('PREVISÃO.LINEAR', 'FORECAST.LINEAR', 'Estatística', 'x; val_conhecidos_y; val_conhecidos_x', 'Prevê um valor futuro em uma linha reta (regressão linear) a partir dos valores conhecidos.', (a) => {
+    const f = fit(a[1], a[2]);
+    return lift1Fn(a[0], (x) => f.icpt + f.slope * N(x));
+  });
+  def('PREVISÃO', 'FORECAST', 'Estatística', 'x; val_conhecidos_y; val_conhecidos_x', 'Versão antiga de PREVISÃO.LINEAR (mesmo cálculo).', (a) => { const f = fit(a[1], a[2]); return lift1Fn(a[0], (x) => f.icpt + f.slope * N(x)); });
+  def('TENDÊNCIA', 'TREND', 'Estatística', 'val_conhecidos_y; [val_conhecidos_x]; [novos_valores_x]; [constante]', 'Retorna valores ao longo da tendência linear. Com vários novos x, o resultado derrama.', (a) => {
+    const ys = M(a[0]);
+    const xs = has(a[1]) ? a[1] : seq(ys.h * ys.w);
+    const nx = has(a[2]) ? M(a[2]) : M(xs);
+    let f;
+    if (has(a[3]) && !B(a[3])) {
+      const p = pairs(ys, xs);
+      const sxy = p.reduce((s, q) => s + q[0] * q[1], 0), sxx = p.reduce((s, q) => s + q[0] * q[0], 0);
+      if (!sxx) throw err(E.DIV0);
+      f = { slope: sxy / sxx, icpt: 0 };
+    } else f = fit(ys, xs);
+    return nx.map((x) => (typeof x === 'number' ? f.icpt + f.slope * x : err(E.VALUE)));
+  });
+  def('INCLINAÇÃO', 'SLOPE', 'Estatística', 'val_conhecidos_y; val_conhecidos_x', 'Inclinação da reta de regressão: quanto y aumenta, em média, quando x aumenta 1.', (a) => fit(a[0], a[1]).slope);
+  def('INTERCEPÇÃO', 'INTERCEPT', 'Estatística', 'val_conhecidos_y; val_conhecidos_x', 'Onde a reta de regressão cruza o eixo y (o valor de y quando x = 0).', (a) => fit(a[0], a[1]).icpt);
+  def('CORREL', 'CORREL', 'Estatística', 'matriz1; matriz2', 'Coeficiente de correlação entre dois conjuntos: perto de 1 ou -1 = forte; perto de 0 = fraca.', (a) => {
+    const f = fit(a[1], a[0]);
+    if (!f.syy) throw err(E.DIV0);
+    return f.sxy / Math.sqrt(f.sxx * f.syy);
+  });
+  def('RQUAD', 'RSQ', 'Estatística', 'val_conhecidos_y; val_conhecidos_x', 'R²: quanto da variação de y a reta explica (de 0 a 1).', (a) => {
+    const f = fit(a[0], a[1]);
+    if (!f.syy) throw err(E.DIV0);
+    return (f.sxy * f.sxy) / (f.sxx * f.syy);
+  });
+  function lift1Fn(v, fn) { return v instanceof Matrix && v.h * v.w > 1 ? v.map((x) => { try { return fn(x); } catch (e) { if (isErr(e)) return e; throw e; } }) : fn(S(v)); }
+
+  // Critério em forma de lista (ex.: =CONT.SES(B:B; I2#)) devolve uma lista de resultados, como no Excel 365.
+  const liftCriteria = (name, critIdx) => {
+    const d = F.get(name);
+    if (!d) return;
+    const base = d.fn;
+    d.fn = (a, ctx) => {
+      const i = critIdx(a).find((j) => a[j] instanceof Matrix && a[j].h * a[j].w > 1);
+      if (i === undefined) return base(a, ctx);
+      return a[i].map((v) => { const b = a.slice(); b[i] = v; try { return d.fn(b, ctx); } catch (e) { if (isErr(e)) return e; throw e; } });
+    };
+  };
+  const odd = (a) => a.map((_, j) => j).filter((j) => j % 2 === 1);
+  const evenFrom2 = (a) => a.map((_, j) => j).filter((j) => j >= 2 && j % 2 === 0);
+  liftCriteria('CONT.SE', () => [1]);
+  liftCriteria('SOMASE', () => [1]);
+  liftCriteria('MÉDIASE', () => [1]);
+  liftCriteria('CONT.SES', odd);
+  liftCriteria('SOMASES', evenFrom2);
+  liftCriteria('MÉDIASES', evenFrom2);
+
+  // LET e LAMBDA são avaliados direto pelo motor (precisam de variáveis); aqui ficam a ajuda e a contagem de argumentos.
+  def('LET', 'LET', LOG, 'nome1; valor1; [nome2]; [valor2]; ...; cálculo', 'Dá nomes a resultados intermediários: =LET(x; A1*2; x+1). Deixa fórmulas longas mais legíveis e calcula cada parte uma vez só.', () => err(E.VALUE));
+  def('LAMBDA', 'LAMBDA', LOG, '[parâmetro1]; [parâmetro2]; ...; cálculo', 'Cria uma função sua: =LAMBDA(x; x*2)(5). Salve com um nome em Fórmulas › Definir Nome para usar como qualquer função.', () => err(E.VALUE));
+
   F.list.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
 })();

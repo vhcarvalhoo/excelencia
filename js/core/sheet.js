@@ -3,7 +3,7 @@
 (function () {
   'use strict';
   const XL = window.XL;
-  const { Matrix, err, isErr, E } = XL.Formula;
+  const { Matrix, err, isErr, E, Lambda } = XL.Formula;
   const K = 1024; // chave numérica: r*K + c
 
   const clone = (o) => JSON.parse(JSON.stringify(o === undefined ? null : o));
@@ -29,8 +29,15 @@
       this.tables = []; // { name, g, style, banded, totalRow, filterBtn }
       this.cf = []; // regras de formatação condicional (a primeira tem prioridade)
       this.dv = []; // regras de validação de dados
-      this.charts = []; // { id, type, g, x, y, w, h, title, legend, labels }
+      this.charts = []; // { id, type, g, x, y, w, h, title, legend, labels, pivot? }
+      this.pivots = []; // Tabelas Dinâmicas (ver pivot.js)
+      this.slicers = []; // Segmentações de Dados e Linhas do Tempo: { id, kind, field, pivots, sel|range, x, y, w, h }
+      this.dataTables = []; // Tabelas de Dados (Teste de Hipóteses): { g, rowIn, colIn }
+      this.scenarios = []; // Gerenciador de Cenários: { name, cells, values, comment }
+      this.solver = null; // último modelo do Solver: { obj, goal, target, vars, cons, nonneg, method }
+      this.sparks = []; // Minigráficos: { id, type, data, loc, high, low, markers }
       this.curCell = null; // célula cuja fórmula está sendo calculada (para [@Coluna])
+      this.spills = new Map(); // fórmulas que "derramam": chave da âncora → { m, h, w, ok }
       const self = this;
       const other = (s) => {
         if (!s) return self;
@@ -42,6 +49,9 @@
         range: (r1, c1, r2, c2, s) => { const sh = other(s); return sh ? sh.rangeValues(r1, c1, r2, c2) : err(E.REF); },
         lastRow: (s) => { const sh = other(s); return sh ? sh.lastRow() : 0; },
         sref: (node, asRange) => (self.srefValue ? self.srefValue(node, self.curCell, asRange) : err(E.REF)),
+        spill: (r, c, s) => { const sh = other(s); return sh ? sh.spillRange(r, c) : err(E.REF); },
+        name: (k) => (self.wb && self.wb.nameValue ? self.wb.nameValue(k, self) : undefined),
+        dataTable: () => (self.dataTableValue ? self.dataTableValue(self.curCell) : err(E.REF)),
       };
     }
 
@@ -60,7 +70,65 @@
       const x = this.cells.get(k);
       if (x && x.kind === 'empty' && Object.keys(x.fmt).length === 0) this.cells.delete(k);
     }
-    clearCache() { this.cache.clear(); this.circular = false; }
+    clearCache() { this.cache.clear(); this.circular = false; if (this.spills) this.spills.clear(); }
+
+    // ---------- Matrizes dinâmicas (derramar) ----------
+    // O resultado cabe? Só pode haver células vazias no caminho.
+    spillFits(r, c, m) {
+      if (r + m.h > this.rows || c + m.w > this.cols) return false;
+      for (let i = 0; i < m.h; i++) for (let j = 0; j < m.w; j++) {
+        if (!i && !j) continue;
+        const x = this.cells.get((r + i) * K + c + j);
+        if (x && x.kind !== 'empty') return false;
+      }
+      return true;
+    }
+    // Valor de uma célula vazia que recebe parte de um resultado derramado (ou undefined)
+    spillValue(r, c) {
+      for (const [k, x] of this.cells) {
+        if (x.kind !== 'formula' || this.computing.has(k)) continue;
+        const ar = Math.floor(k / K), ac = k % K;
+        if (ar > r || ac > c) continue;
+        this.value(ar, ac);
+        const sp = this.spills.get(k);
+        if (sp && sp.ok && r < ar + sp.h && c < ac + sp.w) {
+          let v = sp.m.rows[r - ar][c - ac];
+          if (v === null || v === undefined) v = 0;
+          if (v instanceof Lambda) v = err(E.CALC);
+          return v;
+        }
+      }
+      return undefined;
+    }
+    // Âncora do derramamento que cobre a célula: { r, c, h, w, ok }
+    spillAt(r, c) {
+      this.spillKeys();
+      for (const [k, sp] of this.spills) {
+        const ar = Math.floor(k / K), ac = k % K;
+        if (r >= ar && c >= ac && r < ar + sp.h && c < ac + sp.w) return { r: ar, c: ac, h: sp.h, w: sp.w, ok: sp.ok };
+      }
+      return null;
+    }
+    // Todas as células cobertas por resultados derramados (para desenhar)
+    spillKeys() {
+      for (const [k, x] of this.cells) if (x.kind === 'formula') this.value(Math.floor(k / K), k % K);
+      const out = new Set();
+      for (const [k, sp] of this.spills) {
+        if (!sp.ok) continue;
+        const ar = Math.floor(k / K), ac = k % K;
+        for (let i = 0; i < sp.h; i++) for (let j = 0; j < sp.w; j++) if (i || j) out.add((ar + i) * K + ac + j);
+      }
+      return out;
+    }
+    // Referência A2#: o intervalo derramado inteiro
+    spillRange(r, c) {
+      const cell = this.cell(r, c);
+      if (!cell || cell.kind !== 'formula') return err(E.REF);
+      const v = this.value(r, c);
+      const sp = this.spills.get(r * K + c);
+      if (!sp) return v;
+      return sp.ok ? sp.m : err(E.SPILL);
+    }
     invalidate() { if (this.wb) this.wb.invalidateAll(); else this.clearCache(); }
 
     // Define o conteúdo como se o usuário tivesse digitado. Fórmulas inválidas lançam erro.
@@ -175,7 +243,10 @@
       const k = r * K + c;
       if (this.cache.has(k)) return this.cache.get(k);
       const cell = this.cells.get(k);
-      if (!cell || cell.kind === 'empty') return null;
+      if (!cell || cell.kind === 'empty') {
+        const g = this.spillValue(r, c);
+        return g === undefined ? null : g;
+      }
       if (cell.kind !== 'formula') return cell.value;
       if (this.computing.has(k)) { this.circular = true; return 0; }
       this.computing.add(k);
@@ -185,7 +256,16 @@
       try { v = XL.Formula.evaluate(cell.ast, this.ctx); } catch (e) { console.error(e); v = err(E.VALUE); }
       this.curCell = prevCur;
       this.computing.delete(k);
-      if (v instanceof Matrix) v = v.h && v.w ? v.rows[0][0] : err(E.CALC);
+      if (v instanceof Matrix) {
+        if (!v.h || !v.w) v = err(E.CALC);
+        else if (v.h === 1 && v.w === 1) v = v.rows[0][0];
+        else {
+          const ok = this.spillFits(r, c, v);
+          this.spills.set(k, { m: v, h: v.h, w: v.w, ok });
+          v = ok ? v.rows[0][0] : err(E.SPILL, `O resultado tem ${v.h} linha(s) e ${v.w} coluna(s), mas há dados no caminho. Apague as células do caminho para ele "derramar".`);
+        }
+      }
+      if (v instanceof Lambda) v = err(E.CALC, 'A fórmula devolveu uma função LAMBDA sem chamá-la. Passe os valores entre parênteses, como em =LAMBDA(x; x*2)(5).');
       if (v === null || v === undefined) v = 0;
       if (typeof v === 'number' && !isFinite(v)) v = err(E.NUM);
       this.cache.set(k, v);
@@ -194,7 +274,11 @@
 
     display(r, c, showFormulas) {
       const cell = this.cell(r, c);
-      if (!cell || cell.kind === 'empty') return { text: '', align: null };
+      if (!cell || cell.kind === 'empty') {
+        if (showFormulas) return { text: '', align: null };
+        const g = this.spillValue(r, c);
+        return g === undefined ? { text: '', align: null } : XL.formatValue(g, cell ? cell.fmt : {});
+      }
       if (showFormulas && cell.kind === 'formula') return { text: cell.input, align: 'left' };
       return XL.formatValue(this.value(r, c), cell.fmt);
     }
@@ -207,6 +291,8 @@
         cells, colW: Object.assign({}, this.colW), filter: clone(this.filter), hidden: [...this.hiddenRows],
         freeze: clone(this.freeze), page: clone(this.page), showBreaks: this.showBreaks,
         tables: clone(this.tables), cf: clone(this.cf), dv: clone(this.dv), charts: clone(this.charts),
+        pivots: clone(this.pivots), slicers: clone(this.slicers),
+        dataTables: clone(this.dataTables), scenarios: clone(this.scenarios), solver: clone(this.solver), sparks: clone(this.sparks),
       };
     }
     restore(s) {
@@ -228,12 +314,19 @@
       this.cf = clone(s.cf || []);
       this.dv = clone(s.dv || []);
       this.charts = clone(s.charts || []);
+      this.pivots = clone(s.pivots || []);
+      this.slicers = clone(s.slicers || []);
+      this.dataTables = clone(s.dataTables || []);
+      this.scenarios = clone(s.scenarios || []);
+      this.solver = clone(s.solver || null);
+      this.sparks = clone(s.sparks || []);
       this.invalidate();
     }
     clear() {
       this.cells.clear(); this.colW = {}; this.filter = null; this.hiddenRows.clear(); this.freeze = null;
       this.page = defaultPage(); this.showBreaks = false; this.sel = null;
-      this.tables = []; this.cf = []; this.dv = []; this.charts = [];
+      this.tables = []; this.cf = []; this.dv = []; this.charts = []; this.pivots = []; this.slicers = [];
+      this.dataTables = []; this.scenarios = []; this.solver = null; this.sparks = [];
       this.invalidate();
     }
 

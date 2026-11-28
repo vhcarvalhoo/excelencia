@@ -26,6 +26,7 @@
     set: (sel, value, say) => ({ a: 'set', sel, value, say }), // escolher numa lista
     typeIn: (sel, text, say) => ({ a: 'typeIn', sel, text, say }), // digitar num campo
     fill: (from, to, say) => ({ a: 'fill', from, to, say }), // alça de preenchimento
+    dnd: (from, to, say) => ({ a: 'dnd', from, to, say }), // arrastar um elemento e soltar sobre outro (lista de campos, linha do tempo)
     scroll: (top, left, say) => ({ a: 'scroll', top, left, say }),
     look: (target, say) => ({ a: 'look', target, say }), // apontar sem clicar
     sheet: (name, say) => ({ a: 'el', sel: `.xl-sheettab[data-sheet="${name}"]`, say: say || `Clique na aba <b>${esc(name)}</b>` }),
@@ -135,7 +136,11 @@
       const t0 = Date.now();
       for (;;) {
         const el = [...document.querySelectorAll(sel)].find((e) => { const r = e.getBoundingClientRect(); return r.width || r.height; });
-        if (el) return el;
+        if (el) {
+          // objetos sobre a grade (segmentação, linha do tempo, gráfico) podem estar fora da área visível
+          if (el.closest('.xl-grid-scroll')) el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+          return el;
+        }
         if (Date.now() - t0 > ms) throw new Error('Elemento não encontrado: ' + sel);
         await sleep(50);
       }
@@ -294,6 +299,25 @@
           await this.move(this.center(el));
           await this.click();
           el.click();
+          return;
+        }
+        case 'dnd': {
+          const src = await this.waitFor(a.from);
+          this.say(a.say || `Arraste <b>${labelOf(src)}</b> e solte no lugar indicado`);
+          this.highlight(src.getBoundingClientRect());
+          await this.move(this.center(src));
+          await sleep(250);
+          const to = await this.waitFor(a.to);
+          const ghost = h('div.pv-ghost', (src.textContent || '').trim());
+          document.body.appendChild(ghost);
+          const p = this.center(to);
+          const follow = setInterval(() => Object.assign(ghost.style, { left: this.pos.x + 10 + 'px', top: this.pos.y + 8 + 'px' }), 16);
+          this.highlight(to.getBoundingClientRect());
+          await this.move(p, 900);
+          clearInterval(follow);
+          ghost.remove();
+          this.highlight(null);
+          src.dispatchEvent(new CustomEvent('xl-dnd', { bubbles: true, detail: { to, x: p.x, y: p.y } }));
           return;
         }
         case 'el': {

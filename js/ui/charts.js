@@ -78,7 +78,19 @@
     }
     const showLegend = chart.legend !== false && data.series.length > 1;
     const legendH = showLegend ? 28 : 0;
-    const vals = [].concat(...data.series.map((s) => s.vals)).filter((v) => v !== null);
+    // linha de tendência linear (mínimos quadrados) da 1ª série
+    let trend = null;
+    if (chart.trend && chart.type !== 'bar' && data.series[0]) {
+      const pts = data.series[0].vals.map((v, i) => [i + 1, v]).filter((p) => p[1] !== null);
+      if (pts.length >= 2) {
+        const n = pts.length, mx = pts.reduce((s, p) => s + p[0], 0) / n, my = pts.reduce((s, p) => s + p[1], 0) / n;
+        let sxy = 0, sxx = 0;
+        pts.forEach(([x, y]) => { sxy += (x - mx) * (y - my); sxx += (x - mx) * (x - mx); });
+        const a = sxx ? sxy / sxx : 0, b = my - a * mx;
+        trend = { a, b, y1: a * 1 + b, yn: a * data.cats.length + b };
+      }
+    }
+    const vals = [].concat(...data.series.map((s) => s.vals)).filter((v) => v !== null).concat(trend ? [trend.y1, trend.yn] : []);
     const sc = niceScale(Math.min(0, ...vals), Math.max(0, ...vals));
     const ns = data.series.length, n = data.cats.length;
     if (chart.type === 'bar') {
@@ -138,6 +150,12 @@
             if (chart.labels) out.push(`<text x="${x + barW / 2}" y="${v >= 0 ? y(v) - 5 : y(v) + 13}" text-anchor="middle" class="ct-lbl">${fmtVal(v)}</text>`);
           });
         });
+      }
+      if (trend) {
+        const x1 = L + band * 0.5, xn = L + band * (n - 0.5);
+        const eq = `Tendência linear: y = ${fmtVal(+trend.a.toFixed(2))}x ${trend.b >= 0 ? '+' : '−'} ${fmtVal(Math.abs(+trend.b.toFixed(2)))}`;
+        out.push(`<line x1="${x1}" y1="${y(trend.y1)}" x2="${xn}" y2="${y(trend.yn)}" stroke="#595959" stroke-width="1.6" stroke-dasharray="6 4" class="ct-trend" data-tip="${esc(eq)}"/>`);
+        out.push(`<line x1="${x1}" y1="${y(trend.y1)}" x2="${xn}" y2="${y(trend.yn)}" stroke="transparent" stroke-width="10" data-tip="${esc(eq)}"/>`);
       }
     }
     if (showLegend) out.push(legend(data.series.map((s) => s.name), W, H));

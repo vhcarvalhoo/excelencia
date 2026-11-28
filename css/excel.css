@@ -525,3 +525,77 @@ table.xl-grid {
 .xl-dvbtn:hover { background: #e5e5e5; }
 .xl-dvtip { position: absolute; max-width: 220px; padding: 6px 9px; background: #fffbe6; border: 1px solid #c9b458; border-radius: 3px; font-size: 12px; color: #333; box-shadow: 0 2px 6px rgba(0, 0, 0, .12); }
 .xl-dvtip b { display: block; margin-bottom: 2px; }
+
+/* ======================= Módulo 8: Tabelas Dinâmicas ======================= */
+.xl-mid { display: flex; flex: 1; min-height: 0; }
+.xl-mid > .xl-grid-host { flex: 1; min-width: 0; }
+.pv-sw i:nth-child(1) { border-bottom: 1px solid rgba(0, 0, 0, .25); }
+
+/* Lista de Campos */
+.pv-pane {
+  flex: none; width: 260px; display: flex; flex-direction: column; gap: 6px; padding: 8px 10px 10px;
+  background: #fff; border-top: 1px solid #d6d6d6; border-left: 1px solid #d6d6d6; overflow-y: auto; font-size: 13px; color: #262626;
+}
+.pv-head { display: flex; align-items: center; justify-content: space-between; font-size: 15px; font-weight: 600; color: #1f1f1f; }
+.pv-close { border: 0; background: none; font-size: 20px; line-height: 1; color: #555; cursor: pointer; padding: 0 4px; border-radius: 4px; }
+.pv-close:hover { background: #eee; }
+.pv-sub { font-size: 12px; color: #595959; margin-top: 2px; }
+.pv-search { height: 26px; padding: 0 8px; border: 1px solid #c8c8c8; border-radius: 4px; font: inherit; font-size: 12.5px; }
+.pv-fields { border: 1px solid #e0e0e0; border-radius: 4px; max-height: 190px; min-height: 90px; overflow-y: auto; padding: 3px 0; }
+.pv-field { display: flex; align-items: center; gap: 6px; padding: 3px 8px; cursor: grab; user-select: none; }
+.pv-field:hover { background: #f0f6f2; }
+.pv-field input { accent-color: var(--xl-green); width: 14px; height: 14px; margin: 0; cursor: pointer; }
+.pv-fname { flex: 1; }
+.pv-tag { font-size: 10.5px; color: #8a8a8a; }
+.pv-areas { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.pv-area { border: 1px solid #e0e0e0; border-radius: 4px; min-height: 92px; padding: 4px; background: #fafafa; transition: background .12s, border-color .12s; }
+.pv-area.over { background: #e8f3ec; border-color: var(--xl-green); }
+.pv-area-title { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #444; padding: 1px 2px 4px; }
+.pv-area-ico { width: 14px; text-align: center; color: #107c41; font-weight: 700; }
+.pv-chips { display: flex; flex-direction: column; gap: 3px; }
+.pv-chip { display: flex; align-items: center; justify-content: space-between; gap: 4px; padding: 3px 4px 3px 7px; background: #fff; border: 1px solid #cfcfcf; border-radius: 3px; cursor: grab; user-select: none; font-size: 12px; }
+.pv-chip:hover { border-color: #9a9a9a; }
+.pv-chip-lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pv-caret { flex: none; border: 0; background: none; padding: 0 2px; cursor: pointer; color: #444; display: inline-flex; }
+.pv-caret svg { width: 9px; height: 9px; }
+.pv-ghost { position: fixed; z-index: 3000; pointer-events: none; padding: 4px 10px; background: #fff; border: 1px solid var(--xl-green); border-radius: 3px; font-size: 12px; box-shadow: 0 3px 10px rgba(0, 0, 0, .18); }
+
+/* menus das setinhas da Tabela Dinâmica */
+.pv-menu { width: 270px; }
+.pv-items { max-height: 200px; overflow-y: auto; margin: 4px 6px; padding: 4px; border: 1px solid #e2e2e2; border-radius: 5px; }
+.pv-item { display: flex; align-items: center; gap: 6px; padding: 2px 4px; font-size: 13px; cursor: pointer; }
+.pv-item input { accent-color: var(--xl-green); }
+.pv-menu-foot { display: flex; justify-content: flex-end; gap: 6px; padding: 6px 8px 4px; }
+
+/* Segmentação de Dados */
+.xl-slicer { position: absolute; display: flex; flex-direction: column; background: #fff; border: 1px solid #c8c8c8; border-radius: 3px; box-shadow: 0 1px 4px rgba(0, 0, 0, .12); font-size: 12.5px; overflow: hidden; }
+.sl-head { display: flex; align-items: center; gap: 4px; padding: 6px 6px 5px 10px; cursor: move; border-bottom: 1px solid #ececec; user-select: none; }
+.sl-title { flex: 1; font-weight: 600; color: #1f1f1f; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sl-tool { width: 24px; height: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border: 1px solid transparent; border-radius: 3px; background: none; color: #555; cursor: pointer; }
+.sl-tool:hover { background: #f0f0f0; }
+.sl-tool.on { background: #dff0e6; border-color: #9fd5b3; color: #0b5a2f; }
+.sl-items { flex: 1; overflow-y: auto; padding: 7px 8px; display: flex; flex-direction: column; gap: 5px; }
+.sl-item { text-align: left; padding: 5px 9px; border: 1px solid #c9c9c9; border-radius: 2px; background: #fff; color: #555; font: inherit; font-size: 12.5px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sl-item.on { background: #DDEBF7; border-color: #8FAADC; color: #1f1f1f; }
+.sl-item.nodata { color: #b3b3b3; border-style: dashed; }
+.sl-item:hover { border-color: #4472C4; }
+
+/* Linha do Tempo */
+.tl-cap { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px 2px; color: #3a3a3a; }
+.tl-level { font-size: 11px; letter-spacing: .04em; color: #107c41; font-weight: 600; }
+.tl-scroll { flex: 1; overflow-x: auto; padding: 2px 10px 8px; }
+.tl-years, .tl-strip { display: flex; gap: 2px; }
+.tl-year { flex: none; font-size: 11px; color: #595959; height: 16px; }
+.tl-month { flex: none; width: 44px; height: 36px; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 3px; box-sizing: border-box; background: #e9e9e9; border-radius: 2px; font-size: 11.5px; color: #444; cursor: pointer; user-select: none; }
+.tl-month:hover { background: #d6d6d6; }
+.tl-month.on { background: #8FAADC; color: #10264d; }
+
+/* ======================= Módulo 9: matrizes dinâmicas ======================= */
+.xl-spillbox { position: absolute; pointer-events: none; border: 1px solid #4472C4; z-index: 3; }
+.xl-spillbox.bad { border: 1px dashed #4472C4; }
+.xl-finput.ghost { color: #9a9a9a; }
+
+/* ======================= Módulo 11: minigráficos ======================= */
+.xl-sparklayer { position: absolute; left: 0; top: 0; width: 0; height: 0; pointer-events: none; z-index: 2; }
+.xl-spark { position: absolute; pointer-events: none; }
+.xl-spark svg { display: block; }

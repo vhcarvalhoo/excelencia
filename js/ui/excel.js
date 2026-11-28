@@ -19,7 +19,9 @@
   // comandos que abrem uma janela (não devolvem o foco para a grade)
   const NOFOCUS = ['fx', 'insert-fn', 'colwidth', 'shortcuts', 'find', 'replace', 'sort-dialog', 'dedupe', 'print-preview',
     'print-titles', 'insert-dialog', 'delete-dialog', 'sheet-rename', 'goto', 'sheet-delete', 'format-cells-dialog', 'texttocols',
-    'table-create', 'cf', 'dv-dialog', 'chart-title', 'table-rename'];
+    'table-create', 'cf', 'dv-dialog', 'chart-title', 'table-rename',
+    'pivot-create', 'pivot-settings', 'pivot-group', 'pivot-calc', 'pivot-slicer', 'pivot-timeline', 'pivot-rename',
+    'name-define', 'name-manager', 'goalseek', 'scenario-manager', 'datatable', 'solver'];
 
   class ExcelApp extends XL.Emitter {
     constructor(container, opts = {}) {
@@ -119,7 +121,15 @@
     updateFormulaBar() {
       if (this.grid.editing) return;
       const { ar, ac } = this.grid.sel;
-      this.fbar.value = XL.editTextFor(this.sheet.cell(ar, ac));
+      const cell = this.sheet.cell(ar, ac);
+      let text = XL.editTextFor(cell), ghost = false;
+      // célula de um resultado derramado: o Excel mostra a fórmula da origem em cinza
+      if ((!cell || cell.kind === 'empty') && this.sheet.spillAt) {
+        const sp = this.sheet.spillAt(ar, ac);
+        if (sp && sp.ok && (sp.r !== ar || sp.c !== ac)) { const a = this.sheet.cell(sp.r, sp.c); text = a ? a.input : ''; ghost = true; }
+      }
+      this.fbar.value = text;
+      this.fbar.classList.toggle('ghost', ghost);
     }
     updateStatus() {
       const g = this.grid.range();
@@ -624,6 +634,7 @@
       this.redoStack = [];
       this.clearCopy();
       this.grid.showFormulas = false;
+      if (this.grid.gridlines === false) this.grid.setGridlines(true);
       this.grid.setGuides([]);
       this.grid.reloadSheet();
       this.renderTabs();
