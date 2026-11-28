@@ -14,6 +14,8 @@ python -m http.server 8780
 
 e abrir `http://localhost:8780`.
 
+**Ao publicar mudanças**, troque o número de versão `?v=AAAAMMDD` de todos os arquivos no `index.html` (procure e substitua). Assim o navegador de quem já usou o app baixa os arquivos novos em vez de usar cópias antigas do cache — sem isso, lições novas podem aparecer bloqueadas.
+
 ## O que já existe
 
 - **Simulador do Excel (pt-BR):** Faixa de Opções com as guias, Caixa de Nome, Barra de Fórmulas, grade com seleção por mouse/teclado, edição na célula, modo *Aponte* (clicar em células enquanto digita a fórmula), referências coloridas, autocompletar de funções, dica de sintaxe, F4 para `$`, alça de preenchimento (cópia, séries numéricas, meses, dias), desfazer/refazer, copiar/colar (inclusive com o Excel real), Pincel de Formatação, AutoSoma, Inserir Função, Mostrar Fórmulas, barra de status com Média/Contagem/Soma, formatos (Moeda, Contábil, %, Data...), bordas, cores, estilos de célula.
